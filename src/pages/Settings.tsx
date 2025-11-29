@@ -394,7 +394,7 @@ const Settings = () => {
               <div>
                 <h2 className="font-semibold">Feedback & Ideas</h2>
                 <p className="text-sm text-muted-foreground">
-                  Request features, report issues, or tell us what would make Habit Hero better.
+                  Request features, report issues, or tell us what would make Habit Quest better.
                 </p>
               </div>
 
