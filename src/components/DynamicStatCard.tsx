@@ -1,5 +1,17 @@
+import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import type { UserStat } from '@/hooks/useUserData';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 
 interface DynamicStatCardProps {
   stat: UserStat;
@@ -32,6 +44,17 @@ const colorClasses: Record<string, { text: string; glow: string; button: string 
 
 export function DynamicStatCard({ stat, canComplete, onComplete }: DynamicStatCardProps) {
   const colors = colorClasses[stat.color] || colorClasses.primary;
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  const handleConfirm = () => {
+    setConfirmOpen(false);
+    onComplete();
+  };
+
+  const handleTriggerClick = () => {
+    if (!canComplete) return;
+    setConfirmOpen(true);
+  };
 
   return (
     <div
@@ -59,18 +82,36 @@ export function DynamicStatCard({ stat, canComplete, onComplete }: DynamicStatCa
         </span>
       </div>
 
-      <button
-        onClick={onComplete}
-        disabled={!canComplete}
-        className={cn(
-          "w-full py-2 px-4 rounded-md border font-medium transition-all duration-200",
-          canComplete
-            ? cn(colors.button, "cursor-pointer active:scale-95")
-            : "bg-muted/30 text-muted-foreground cursor-not-allowed opacity-50"
-        )}
-      >
-        {canComplete ? 'Complete Today' : '✓ Done Today'}
-      </button>
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogTrigger asChild>
+          <button
+            onClick={handleTriggerClick}
+            disabled={!canComplete}
+            className={cn(
+              "w-full py-2 px-4 rounded-md border font-medium transition-all duration-200",
+              canComplete
+                ? cn(colors.button, "cursor-pointer active:scale-95")
+                : "bg-muted/30 text-muted-foreground cursor-not-allowed opacity-50"
+            )}
+          >
+            {canComplete ? 'Complete Today' : '✓ Done Today'}
+          </button>
+        </AlertDialogTrigger>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Log {stat.stat_name} today?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will record today's completion for {stat.stat_name} and update your stats instantly.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirm}>
+              Yes, I completed it
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

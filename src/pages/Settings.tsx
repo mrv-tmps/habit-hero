@@ -193,9 +193,27 @@ const Settings = () => {
                 />
               </div>
 
-              <Button onClick={handleSave} disabled={saving} className="w-full">
-                {saving ? 'Saving...' : 'Save Changes'}
-              </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button disabled={saving} className="w-full">
+                    {saving ? 'Saving...' : 'Save Changes'}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Save character changes?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will update your character name and avatar. You can always change these again later.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleSave}>
+                      Confirm Save
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
 
             {/* Danger Zone */}
@@ -292,13 +310,30 @@ const Settings = () => {
                 </p>
               )}
 
-              <Button
-                onClick={handleFeedbackSubmit}
-                disabled={feedbackSubmitting}
-                className="w-full"
-              >
-                {feedbackSubmitting ? 'Sending...' : 'Send Feedback'}
-              </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    disabled={feedbackSubmitting}
+                    className="w-full"
+                  >
+                    {feedbackSubmitting ? 'Sending...' : 'Send Feedback'}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Send this feedback?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Your message will be sent to the Habit Quest team. Please make sure it doesn&apos;t include any sensitive information.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Review Again</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleFeedbackSubmit}>
+                      Send Feedback
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
           </section>
         </div>
