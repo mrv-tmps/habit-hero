@@ -14,7 +14,116 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      habit_log: {
+        Row: {
+          completed_date: string
+          created_at: string | null
+          id: string
+          stat_id: string
+          user_id: string
+        }
+        Insert: {
+          completed_date?: string
+          created_at?: string | null
+          id?: string
+          stat_id: string
+          user_id: string
+        }
+        Update: {
+          completed_date?: string
+          created_at?: string | null
+          id?: string
+          stat_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "habit_log_stat_id_fkey"
+            columns: ["stat_id"]
+            isOneToOne: false
+            referencedRelation: "user_stats"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          avatar: string | null
+          character_name: string | null
+          created_at: string | null
+          github_owner: string | null
+          github_repo: string | null
+          github_token: string | null
+          id: string
+          last_github_commit_date: string | null
+          onboarding_completed: boolean | null
+          total_xp: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          avatar?: string | null
+          character_name?: string | null
+          created_at?: string | null
+          github_owner?: string | null
+          github_repo?: string | null
+          github_token?: string | null
+          id: string
+          last_github_commit_date?: string | null
+          onboarding_completed?: boolean | null
+          total_xp?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          avatar?: string | null
+          character_name?: string | null
+          created_at?: string | null
+          github_owner?: string | null
+          github_repo?: string | null
+          github_token?: string | null
+          id?: string
+          last_github_commit_date?: string | null
+          onboarding_completed?: boolean | null
+          total_xp?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      user_stats: {
+        Row: {
+          color: string
+          created_at: string | null
+          emoji: string
+          habit_description: string | null
+          id: string
+          order_index: number
+          stat_name: string
+          total_points: number | null
+          user_id: string
+        }
+        Insert: {
+          color?: string
+          created_at?: string | null
+          emoji?: string
+          habit_description?: string | null
+          id?: string
+          order_index?: number
+          stat_name: string
+          total_points?: number | null
+          user_id: string
+        }
+        Update: {
+          color?: string
+          created_at?: string | null
+          emoji?: string
+          habit_description?: string | null
+          id?: string
+          order_index?: number
+          stat_name?: string
+          total_points?: number | null
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
