@@ -32,7 +32,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 function AuthRoute({ children }: { children: React.ReactNode }) {
-  const { user, isGuest, loading } = useAuth();
+  const { user, loading } = useAuth();
 
   if (loading) {
     return (
@@ -42,7 +42,7 @@ function AuthRoute({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (user || isGuest) {
+  if (user) {
     return <Navigate to="/" replace />;
   }
 

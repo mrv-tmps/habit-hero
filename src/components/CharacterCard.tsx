@@ -2,6 +2,7 @@ import { cn } from '@/lib/utils';
 
 interface CharacterCardProps {
   avatar: string;
+  name?: string;
   level: number;
   xpProgress: number;
   xpToNextLevel: number;
@@ -10,7 +11,8 @@ interface CharacterCardProps {
 }
 
 export function CharacterCard({ 
-  avatar, 
+  avatar,
+  name,
   level, 
   xpProgress, 
   xpToNextLevel, 
@@ -35,8 +37,9 @@ export function CharacterCard({
           {avatar}
         </div>
 
-        {/* Character name placeholder */}
-        <h2 className="font-pixel text-sm text-primary text-glow">HERO</h2>
+        <h2 className="font-pixel text-sm text-primary text-glow">
+          {name || 'Hero'}
+        </h2>
 
         {/* XP Bar */}
         <div className="w-full space-y-2">

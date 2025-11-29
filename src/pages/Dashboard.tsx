@@ -101,6 +101,7 @@ const Dashboard = () => {
         {/* Character Card */}
         <CharacterCard
           avatar={profile.avatar}
+          name={profile.character_name}
           level={level}
           xpProgress={xpProgress}
           xpToNextLevel={xpToNextLevel}

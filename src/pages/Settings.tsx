@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserData } from '@/hooks/useUserData';
@@ -30,6 +30,13 @@ const Settings = () => {
   const [characterName, setCharacterName] = useState(profile?.character_name || 'Hero');
   const [avatar, setAvatar] = useState(profile?.avatar || '🧑‍🚀');
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (profile) {
+      setCharacterName(profile.character_name || 'Hero');
+      setAvatar(profile.avatar || '🧑‍🚀');
+    }
+  }, [profile]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -75,7 +82,7 @@ const Settings = () => {
         await supabase.from('user_stats').update({ total_points: 0 }).eq('user_id', user.id);
         // Reset profile XP
         await supabase.from('profiles').update({ total_xp: 0 }).eq('id', user.id);
-        
+
         toast.success('Progress reset!');
         refetch();
       }
