@@ -39,15 +39,17 @@ const FEEDBACK_CATEGORIES = [
 const Settings = () => {
   const navigate = useNavigate();
   const { user, isGuest, signOut } = useAuth();
-  const { profile, refetch } = useUserData();
+  const { profile, stats, refetch } = useUserData();
 
   const [characterName, setCharacterName] = useState(profile?.character_name || 'Hero');
   const [avatar, setAvatar] = useState(profile?.avatar || '🧑‍🚀');
   const [saving, setSaving] = useState(false);
+  const [questSaving, setQuestSaving] = useState(false);
   const [feedbackEmail, setFeedbackEmail] = useState(user?.email || '');
   const [feedbackCategory, setFeedbackCategory] = useState('feature');
   const [feedbackMessage, setFeedbackMessage] = useState('');
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+  const [editedDescriptions, setEditedDescriptions] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (profile) {
@@ -59,6 +61,17 @@ const Settings = () => {
   useEffect(() => {
     setFeedbackEmail(user?.email || '');
   }, [user]);
+
+  useEffect(() => {
+    if (stats && stats.length > 0) {
+      setEditedDescriptions(
+        stats.reduce((acc, stat) => {
+          acc[stat.id] = stat.habit_description || '';
+          return acc;
+        }, {} as Record<string, string>)
+      );
+    }
+  }, [stats]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -143,6 +156,56 @@ const Settings = () => {
   const handleLogout = async () => {
     await signOut();
     navigate('/auth');
+  };
+
+  const handleSaveQuests = async () => {
+    setQuestSaving(true);
+    try {
+      if (isGuest) {
+        const stored = localStorage.getItem('habit-quest-guest-data');
+        if (stored) {
+          const data = JSON.parse(stored);
+          if (Array.isArray(data.stats)) {
+            data.stats = data.stats.map((s: any) => ({
+              ...s,
+              habit_description:
+                editedDescriptions[s.id] !== undefined
+                  ? editedDescriptions[s.id]
+                  : s.habit_description,
+            }));
+            localStorage.setItem('habit-quest-guest-data', JSON.stringify(data));
+          }
+        }
+        toast.success('Daily quests updated!');
+        refetch();
+      } else if (user && stats && stats.length > 0) {
+        const updates = stats
+          .map((stat) => {
+            const newDescription = editedDescriptions[stat.id] ?? stat.habit_description ?? '';
+            if (newDescription === (stat.habit_description || '')) {
+              return null;
+            }
+            return supabase
+              .from('user_stats')
+              .update({ habit_description: newDescription })
+              .eq('id', stat.id);
+          })
+          .filter(Boolean) as Promise<any>[];
+
+        if (updates.length > 0) {
+          const results = await Promise.all(updates);
+          const error = results.find((r: any) => r.error)?.error;
+          if (error) throw error;
+        }
+
+        toast.success('Daily quests updated!');
+        refetch();
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to save quests');
+    } finally {
+      setQuestSaving(false);
+    }
   };
 
   return (
@@ -251,6 +314,81 @@ const Settings = () => {
           </section>
 
           <section className="space-y-6">
+            {/* Quest Settings */}
+            <div className="rounded-xl bg-card border border-border p-6 space-y-4">
+              <h2 className="font-semibold">Daily Quests</h2>
+              <p className="text-sm text-muted-foreground">
+                Update the description of each quest for your stats. This is what you&apos;re committing to do each day.
+              </p>
+
+              {!stats || stats.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No stats found yet. Create your hero first in onboarding.
+                </p>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    {stats.map((stat) => (
+                      <div
+                        key={stat.id}
+                        className="rounded-lg border border-border/60 bg-background/40 p-4 space-y-2"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-2xl shrink-0">{stat.emoji}</span>
+                            <span className="font-medium truncate">{stat.stat_name}</span>
+                          </div>
+                          <span className="text-xs text-muted-foreground whitespace-nowrap">
+                            {stat.total_points} XP
+                          </span>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Quest Description</Label>
+                          <Input
+                            value={editedDescriptions[stat.id] ?? ''}
+                            onChange={(e) =>
+                              setEditedDescriptions((prev) => ({
+                                ...prev,
+                                [stat.id]: e.target.value,
+                              }))
+                            }
+                            placeholder="Describe the daily action for this stat"
+                            className="bg-background/50"
+                            maxLength={80}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        disabled={questSaving}
+                        className="w-full"
+                      >
+                        {questSaving ? 'Saving...' : 'Save Quest Changes'}
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Save quest changes?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This will update the descriptions for your existing stats. It will also change how they appear in your dashboard and history.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleSaveQuests}>
+                          Confirm Save
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
+              )}
+            </div>
+
             {/* Feedback */}
             <div className="rounded-xl bg-card border border-border/80 p-6 space-y-4">
               <div>

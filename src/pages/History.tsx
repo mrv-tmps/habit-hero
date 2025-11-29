@@ -3,6 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { useUserData } from '@/hooks/useUserData';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 
 const History = () => {
   const navigate = useNavigate();
@@ -10,6 +17,7 @@ const History = () => {
   const currentYear = new Date().getFullYear();
   const [viewMode, setViewMode] = useState<'recent' | 'year'>('recent');
   const [selectedYear, setSelectedYear] = useState(currentYear);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   const logCountByDate = useMemo(() => {
     return allLogs.reduce<Record<string, number>>((acc, log) => {
@@ -151,12 +159,17 @@ const History = () => {
       }));
   }, [allLogs, stats]);
 
+  const selectedDay = useMemo(() => {
+    if (!selectedDate) return null;
+    return timelineData.find((entry) => entry.date === selectedDate) || null;
+  }, [selectedDate, timelineData]);
+
   const getHeatColor = (count: number) => {
     if (count === 0) return 'bg-muted/30';
-    if (count === 1) return 'bg-emerald-500/30';
-    if (count === 2) return 'bg-emerald-500/50';
-    if (count === 3) return 'bg-emerald-500/70';
-    return 'bg-emerald-500';
+    if (count === 1) return 'bg-primary/20';
+    if (count === 2) return 'bg-primary/40';
+    if (count === 3) return 'bg-primary/60';
+    return 'bg-primary';
   };
 
   if (loading) {
@@ -303,12 +316,13 @@ const History = () => {
                       <div className="flex gap-[3px]">
                         {/* Day labels */}
                         <div className="flex flex-col gap-[3px] text-[9px] text-muted-foreground w-8 flex-shrink-0 pr-1 pt-0.5">
-                          <span className="h-[11px] leading-[11px]">Sun</span>
-                          <span className="h-[11px] leading-[11px] invisible">Mon</span>
-                          <span className="h-[11px] leading-[11px]">Wed</span>
-                          <span className="h-[11px] leading-[11px] invisible">Thu</span>
-                          <span className="h-[11px] leading-[11px]">Fri</span>
-                          <span className="h-[11px] leading-[11px] invisible">Sat</span>
+                          <span className="h-[10.5px] leading-[11px]">Sun</span>
+                          <span className="h-[10.5px] leading-[11px] invisible">Mon</span>
+                          <span className="h-[10.5px] leading-[11px] invisible">Tue</span>
+                          <span className="h-[10.5px] leading-[11px]">Wed</span>
+                          <span className="h-[10.5px] leading-[11px] invisible">Thu</span>
+                          <span className="h-[10.5px] leading-[11px] invisible">Fri</span>
+                          <span className="h-[10.5px] leading-[11px]">Sat</span>
                         </div>
 
                         {/* Weeks */}
@@ -363,7 +377,11 @@ const History = () => {
               ) : (
                 <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
                   {timelineData.map(({ date, stats: completedStats }) => (
-                    <div key={date} className="rounded-lg bg-background/40 border border-border/60 p-3 sm:p-4 hover:border-border transition-colors">
+                    <div
+                      key={date}
+                      className="rounded-lg bg-background/40 border border-border/60 p-3 sm:p-4 hover:border-border transition-colors cursor-pointer"
+                      onClick={() => setSelectedDate(date)}
+                    >
                       <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
                         <span className="text-sm font-medium">
                           {new Date(date).toLocaleDateString('en-US', {
@@ -379,9 +397,17 @@ const History = () => {
                       </div>
                       <div className="flex flex-wrap gap-2">
                         {completedStats.map((stat, i) => (
-                          <span key={i} className="text-2xl" title={stat?.stat_name}>
-                            {stat?.emoji}
-                          </span>
+                          <div
+                            key={i}
+                            className="inline-flex items-center gap-2 rounded-full bg-background/80 border border-border/70 px-3 py-1"
+                          >
+                            <span className="text-xl" title={stat?.stat_name}>
+                              {stat?.emoji}
+                            </span>
+                            <span className="text-xs text-muted-foreground max-w-[200px] truncate">
+                              {stat?.habit_description || stat?.stat_name}
+                            </span>
+                          </div>
                         ))}
                       </div>
                     </div>
@@ -389,6 +415,45 @@ const History = () => {
                 </div>
               )}
             </div>
+
+            <Dialog open={!!selectedDay} onOpenChange={(open) => !open && setSelectedDate(null)}>
+              <DialogContent className="max-w-lg">
+                {selectedDay && (
+                  <>
+                    <DialogHeader>
+                      <DialogTitle>
+                        {new Date(selectedDay.date).toLocaleDateString('en-US', {
+                          weekday: 'long',
+                          month: 'long',
+                          day: 'numeric',
+                          year: 'numeric',
+                        })}
+                      </DialogTitle>
+                      <DialogDescription>
+                        You completed {selectedDay.stats.length} quest
+                        {selectedDay.stats.length !== 1 ? 's' : ''} this day.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="mt-4 space-y-3">
+                      {selectedDay.stats.map((stat, index) => (
+                        <div
+                          key={`${stat?.id ?? index}`}
+                          className="flex items-start gap-3 rounded-lg border border-border/70 bg-background/80 px-3 py-2"
+                        >
+                          <div className="text-2xl mt-0.5">{stat?.emoji}</div>
+                          <div className="space-y-1">
+                            <p className="text-sm font-semibold">{stat?.stat_name}</p>
+                            <p className="text-sm text-muted-foreground whitespace-pre-wrap break-words">
+                              {stat?.habit_description || 'No quest description set for this stat yet.'}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </DialogContent>
+            </Dialog>
           </section>
         </div>
       </div>
