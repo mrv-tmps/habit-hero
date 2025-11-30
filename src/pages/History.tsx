@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useUserData } from '@/hooks/useUserData';
+import { useUserData, type UserStat } from '@/hooks/useUserData';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import {
@@ -10,6 +10,19 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
+
+type TimelineEntry = {
+  date: string;
+  entries: {
+    log: {
+      stat_id: string;
+      completed_date: string;
+      stat_name_snapshot?: string | null;
+      habit_description_snapshot?: string | null;
+    };
+    stat: UserStat | undefined;
+  }[];
+};
 
 const History = () => {
   const navigate = useNavigate();
@@ -138,24 +151,26 @@ const History = () => {
     return streak;
   }, [allLogs]);
 
-  // Group logs by date for timeline
-  const timelineData = useMemo(() => {
-    const grouped: Record<string, string[]> = {};
+  // Group logs by date for timeline, attaching both log + current stat
+  const timelineData: TimelineEntry[] = useMemo(() => {
+    const grouped: Record<string, typeof allLogs> = {};
 
     allLogs.forEach(log => {
       if (!grouped[log.completed_date]) {
         grouped[log.completed_date] = [];
       }
-      grouped[log.completed_date].push(log.stat_id);
+      grouped[log.completed_date].push(log);
     });
 
     return Object.entries(grouped)
       .sort(([a], [b]) => b.localeCompare(a))
       .slice(0, 14)
-      .map(([date, statIds]) => ({
+      .map(([date, logs]) => ({
         date,
-        statIds,
-        stats: statIds.map(id => stats.find(s => s.id === id)).filter(Boolean),
+        entries: logs.map(log => ({
+          log,
+          stat: stats.find(s => s.id === log.stat_id),
+        })),
       }));
   }, [allLogs, stats]);
 
@@ -205,7 +220,7 @@ const History = () => {
             {/* Quick summary */}
             <div className="rounded-xl bg-card border border-border/80 p-4 space-y-2">
               <p className="text-sm text-muted-foreground">
-                Keep your streak alive by completing at least one quest per day. Your best run fuels Habit Quest's leaderboards (coming soon!).
+                Keep your streak alive by completing at least one quest per day. Your best run fuels Habit Quest&apos;s leaderboards (coming soon!).
               </p>
               <Button variant="outline" size="sm" onClick={() => navigate('/')}>
                 Back to Dashboard →
@@ -265,7 +280,7 @@ const History = () => {
                             <div
                               key={di}
                               className={cn(
-                                "w-[11px] h-[11px] rounded-sm transition-all hover:ring-2 hover:ring-primary/50 cursor-pointer",
+                                'w-[11px] h-[11px] rounded-sm transition-all hover:ring-2 hover:ring-primary/50 cursor-pointer',
                                 getHeatColor(day.count)
                               )}
                               title={`${day.date}: ${day.count} habit${day.count !== 1 ? 's' : ''} completed`}
@@ -282,7 +297,7 @@ const History = () => {
                       <span>Less</span>
                       <div className="flex gap-1">
                         {[0, 1, 2, 3, 4].map(i => (
-                          <div key={i} className={cn("w-[11px] h-[11px] rounded-sm", getHeatColor(i))} />
+                          <div key={i} className={cn('w-[11px] h-[11px] rounded-sm', getHeatColor(i))} />
                         ))}
                       </div>
                       <span>More</span>
@@ -335,12 +350,16 @@ const History = () => {
                                   <div
                                     key={di}
                                     className={cn(
-                                      "w-[11px] h-[11px] rounded-sm transition-all",
-                                      isCurrentYear && "hover:ring-2 hover:ring-primary/50 cursor-pointer",
+                                      'w-[11px] h-[11px] rounded-sm transition-all',
+                                      isCurrentYear && 'hover:ring-2 hover:ring-primary/50 cursor-pointer',
                                       getHeatColor(day.count),
                                       !isCurrentYear && 'opacity-20'
                                     )}
-                                    title={isCurrentYear ? `${day.date}: ${day.count} habit${day.count !== 1 ? 's' : ''} completed` : ''}
+                                    title={
+                                      isCurrentYear
+                                        ? `${day.date}: ${day.count} habit${day.count !== 1 ? 's' : ''} completed`
+                                        : ''
+                                    }
                                   />
                                 );
                               })}
@@ -355,7 +374,7 @@ const History = () => {
                     <span>Less</span>
                     <div className="flex gap-1">
                       {[0, 1, 2, 3, 4].map(i => (
-                        <div key={i} className={cn("w-[11px] h-[11px] rounded-sm", getHeatColor(i))} />
+                        <div key={i} className={cn('w-[11px] h-[11px] rounded-sm', getHeatColor(i))} />
                       ))}
                     </div>
                     <span>More</span>
@@ -373,45 +392,61 @@ const History = () => {
                 </span>
               </div>
               {timelineData.length === 0 ? (
-                <p className="text-center text-muted-foreground py-8">No activity yet. Complete your first habit!</p>
+                <p className="text-center text-muted-foreground py-8">
+                  No activity yet. Complete your first habit!
+                </p>
               ) : (
                 <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
-                  {timelineData.map(({ date, stats: completedStats }) => (
-                    <div
-                      key={date}
-                      className="rounded-lg bg-background/40 border border-border/60 p-3 sm:p-4 hover:border-border transition-colors cursor-pointer"
-                      onClick={() => setSelectedDate(date)}
-                    >
-                      <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
-                        <span className="text-sm font-medium">
-                          {new Date(date).toLocaleDateString('en-US', {
-                            weekday: 'short',
-                            month: 'short',
-                            day: 'numeric',
-                            year: 'numeric'
+                  {timelineData.map(({ date, entries }) => {
+                    const completedCount = entries.length;
+                    return (
+                      <div
+                        key={date}
+                        className="rounded-lg bg-background/40 border border-border/60 p-3 sm:p-4 hover:border-border transition-colors cursor-pointer"
+                        onClick={() => setSelectedDate(date)}
+                      >
+                        <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+                          <span className="text-sm font-medium">
+                            {new Date(date).toLocaleDateString('en-US', {
+                              weekday: 'short',
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric',
+                            })}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {completedCount}/{stats.length} completed
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {entries.map(({ log, stat }, i) => {
+                            const emoji = stat?.emoji ?? '⭐';
+
+                            const label =
+                              log.habit_description_snapshot ||
+                              log.stat_name_snapshot ||
+                              stat?.habit_description ||
+                              stat?.stat_name ||
+                              'Quest';
+
+                            return (
+                              <div
+                                key={i}
+                                className="inline-flex items-center gap-2 rounded-full bg-background/80 border border-border/70 px-3 py-1"
+                              >
+                                <span className="text-xl" title={stat?.stat_name}>
+                                  {emoji}
+                                </span>
+                                <span className="text-xs text-muted-foreground max-w-[200px] truncate">
+                                  {label}
+                                </span>
+                              </div>
+                            );
                           })}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {completedStats.length}/{stats.length} completed
-                        </span>
+                        </div>
                       </div>
-                      <div className="flex flex-wrap gap-2">
-                        {completedStats.map((stat, i) => (
-                          <div
-                            key={i}
-                            className="inline-flex items-center gap-2 rounded-full bg-background/80 border border-border/70 px-3 py-1"
-                          >
-                            <span className="text-xl" title={stat?.stat_name}>
-                              {stat?.emoji}
-                            </span>
-                            <span className="text-xs text-muted-foreground max-w-[200px] truncate">
-                              {stat?.habit_description || stat?.stat_name}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -430,25 +465,40 @@ const History = () => {
                         })}
                       </DialogTitle>
                       <DialogDescription>
-                        You completed {selectedDay.stats.length} quest
-                        {selectedDay.stats.length !== 1 ? 's' : ''} this day.
+                        You completed {selectedDay.entries.length} quest
+                        {selectedDay.entries.length !== 1 ? 's' : ''} this day.
                       </DialogDescription>
                     </DialogHeader>
                     <div className="mt-4 space-y-3">
-                      {selectedDay.stats.map((stat, index) => (
-                        <div
-                          key={`${stat?.id ?? index}`}
-                          className="flex items-start gap-3 rounded-lg border border-border/70 bg-background/80 px-3 py-2"
-                        >
-                          <div className="text-2xl mt-0.5">{stat?.emoji}</div>
-                          <div className="space-y-1">
-                            <p className="text-sm font-semibold">{stat?.stat_name}</p>
-                            <p className="text-sm text-muted-foreground whitespace-pre-wrap break-words">
-                              {stat?.habit_description || 'No quest description set for this stat yet.'}
-                            </p>
+                      {selectedDay.entries.map(({ log, stat }, index) => {
+                        const emoji = stat?.emoji ?? '⭐';
+                        const title =
+                          log.stat_name_snapshot ||
+                          stat?.stat_name ||
+                          'Quest';
+
+                        const description =
+                          log.habit_description_snapshot ||
+                          stat?.habit_description ||
+                          'No quest description set for this stat yet.';
+
+                        return (
+                          <div
+                            key={`${stat?.id ?? index}`}
+                            className="flex items-start gap-3 rounded-lg border border-border/70 bg-background/80 px-3 py-2"
+                          >
+                            <div className="text-2xl mt-0.5">{emoji}</div>
+                            <div className="space-y-1">
+                              <p className="text-sm font-semibold">
+                                {title}
+                              </p>
+                              <p className="text-sm text-muted-foreground whitespace-pre-wrap break-words">
+                                {description}
+                              </p>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </>
                 )}

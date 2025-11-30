@@ -26,7 +26,11 @@ export interface UserProfile {
 interface HabitLog {
   stat_id: string;
   completed_date: string;
+  stat_name_snapshot: string | null;
+  habit_description_snapshot: string | null;
 }
+
+
 
 export function useUserData() {
   const { user, isGuest } = useAuth();
@@ -54,7 +58,7 @@ export function useUserData() {
         last_github_commit_date: null,
       });
       setStats(data.stats || []);
-      
+
       const logs = data.habitLogs || [];
       setAllLogs(logs);
       setTodayLogs(logs.filter((l: HabitLog) => l.completed_date === getTodayDate()));
@@ -75,7 +79,7 @@ export function useUserData() {
         .maybeSingle();
 
       if (profileError) throw profileError;
-      
+
       if (profileData) {
         setProfile({
           character_name: profileData.character_name || 'Hero',
@@ -102,11 +106,13 @@ export function useUserData() {
       // Fetch all habit logs
       const { data: logsData, error: logsError } = await supabase
         .from('habit_log')
-        .select('stat_id, completed_date')
+        .select('stat_id, completed_date, stat_name_snapshot, habit_description_snapshot')
         .eq('user_id', user.id);
 
+
+
       if (logsError) throw logsError;
-      
+
       const logs = logsData || [];
       setAllLogs(logs);
       setTodayLogs(logs.filter(l => l.completed_date === getTodayDate()));
@@ -129,7 +135,7 @@ export function useUserData() {
 
   const completeStat = useCallback(async (statId: string) => {
     const today = getTodayDate();
-    
+
     // Check if already completed today
     if (todayLogs.some(l => l.stat_id === statId)) {
       return { success: false, message: 'Already completed today!' };
@@ -139,41 +145,59 @@ export function useUserData() {
       // Handle guest mode
       const stored = localStorage.getItem('habit-quest-guest-data');
       if (!stored) return { success: false, message: 'No data found' };
-      
+
       const data = JSON.parse(stored);
-      const newLog = { stat_id: statId, completed_date: today };
+      const guestStat = data.stats.find((s: UserStat) => s.id === statId);
+
+      const newLog: HabitLog = {
+        stat_id: statId,
+        completed_date: today,
+        stat_name_snapshot: guestStat?.stat_name ?? null,
+        habit_description_snapshot: guestStat?.habit_description ?? null,
+      };
+
+
       data.habitLogs = [...(data.habitLogs || []), newLog];
       data.totalXp = (data.totalXp || 0) + 1;
-      
+
       // Update stat points
-      data.stats = data.stats.map((s: UserStat) => 
+      data.stats = data.stats.map((s: UserStat) =>
         s.id === statId ? { ...s, total_points: s.total_points + 1 } : s
       );
-      
+
       localStorage.setItem('habit-quest-guest-data', JSON.stringify(data));
-      
+
       setTodayLogs(prev => [...prev, newLog]);
       setAllLogs(prev => [...prev, newLog]);
       setStats(data.stats);
       setProfile(prev => prev ? { ...prev, total_xp: data.totalXp } : null);
-      
+
       const newLevel = Math.floor(data.totalXp / 10) + 1;
       const oldLevel = Math.floor((data.totalXp - 1) / 10) + 1;
-      
-      return { 
-        success: true, 
+
+      return {
+        success: true,
         leveledUp: newLevel > oldLevel,
-        newLevel 
+        newLevel
       };
     }
 
     if (!user) return { success: false, message: 'Not logged in' };
 
     try {
-      // Insert habit log
+      // Find the stat we’re logging, so we can snapshot it
+      const statToSnapshot = stats.find(s => s.id === statId);
+
       const { error: logError } = await supabase
         .from('habit_log')
-        .insert({ user_id: user.id, stat_id: statId, completed_date: today });
+        .insert({
+          user_id: user.id,
+          stat_id: statId,
+          completed_date: today,
+          stat_name_snapshot: statToSnapshot?.stat_name ?? null,
+          habit_description_snapshot: statToSnapshot?.habit_description ?? null,
+        });
+
 
       if (logError) throw logError;
 
@@ -194,10 +218,17 @@ export function useUserData() {
         .eq('id', user.id);
 
       // Update local state
-      const newLog = { stat_id: statId, completed_date: today };
+      const newLog: HabitLog = {
+        stat_id: statId,
+        completed_date: today,
+        stat_name_snapshot: statToSnapshot?.stat_name ?? null,
+        habit_description_snapshot: statToSnapshot?.habit_description ?? null,
+      };
+
       setTodayLogs(prev => [...prev, newLog]);
       setAllLogs(prev => [...prev, newLog]);
-      setStats(prev => prev.map(s => 
+
+      setStats(prev => prev.map(s =>
         s.id === statId ? { ...s, total_points: s.total_points + 1 } : s
       ));
       setProfile(prev => prev ? { ...prev, total_xp: newXp } : null);
@@ -205,14 +236,15 @@ export function useUserData() {
       const newLevel = Math.floor(newXp / 10) + 1;
       const oldLevel = Math.floor((newXp - 1) / 10) + 1;
 
-      return { 
-        success: true, 
+      return {
+        success: true,
         leveledUp: newLevel > oldLevel,
-        newLevel 
+        newLevel
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to complete stat:', error);
-      return { success: false, message: error.message };
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, message };
     }
   }, [user, isGuest, todayLogs, stats, profile]);
 
