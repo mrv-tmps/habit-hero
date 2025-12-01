@@ -9,7 +9,7 @@ import Onboarding from "./pages/Onboarding";
 import Dashboard from "./pages/Dashboard";
 import History from "./pages/History";
 import Settings from "./pages/Settings";
-import NotFound from "./pages/NotFound";
+import ErrorPage from "./pages/Error";
 
 const queryClient = new QueryClient();
 
@@ -57,7 +57,8 @@ function AppRoutes() {
       <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/history" element={<ProtectedRoute><History /></ProtectedRoute>} />
       <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-      <Route path="*" element={<NotFound />} />
+      <Route path="/error" element={<ErrorPage />} />
+      <Route path="*" element={<ErrorPage />} />
     </Routes>
   );
 }
