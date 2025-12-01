@@ -273,7 +273,7 @@ const History = () => {
                 <div className="space-y-4">
                   {/* 12 weeks view - scrollable on mobile */}
                   <div className="overflow-x-auto pb-2">
-                    <div className="flex gap-[3px] min-w-[600px]">
+                    <div className="flex gap-[3px] min-w-[320px]">
                       {calendarData.map((week, wi) => (
                         <div key={wi} className="flex flex-col gap-[3px]">
                           {week.map((day, di) => (
@@ -307,8 +307,8 @@ const History = () => {
               ) : (
                 <div className="space-y-4">
                   {/* Year view - scrollable on mobile */}
-                  <div className="overflow-x-auto pb-2">
-                    <div className="inline-block min-w-full">
+                  <div className="overflow-x-auto pb-2 " >
+                    <div className="inline-block max-[500px]:max-w-[320px] max-md:max-w-[420px] max-lg:max-w-[520px] max-xl:max-w-[620px]">
                       {/* Month labels - positioned above the calendar */}
                       <div className="relative h-4 mb-2">
                         <div className="absolute inset-0 flex text-[10px] text-muted-foreground">
