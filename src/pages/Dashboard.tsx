@@ -7,7 +7,8 @@ import { DynamicStatCard } from '@/components/DynamicStatCard';
 import { GuestBanner } from '@/components/GuestBanner';
 import { MessageToast } from '@/components/MessageToast';
 import { Button } from '@/components/ui/button';
-import logo from '@/assets/habit-quest-logo.png';
+import { LeaderboardModal } from '@/components/LeaderboardModal';
+import { DashboardHeader } from '@/components/DashboardHeader';
 
 const Dashboard = () => {
   const { user, isGuest, signOut } = useAuth();
@@ -22,9 +23,9 @@ const Dashboard = () => {
     xpProgress,
     xpToNextLevel,
   } = useUserData();
-
   const [message, setMessage] = useState<string | null>(null);
   const [isLevelingUp, setIsLevelingUp] = useState(false);
+  const [leaderboardOpen, setLeaderboardOpen] = useState(false);
 
   // Redirect to onboarding if not completed
   useEffect(() => {
@@ -83,48 +84,7 @@ const Dashboard = () => {
 
       <div className="relative mx-auto w-full max-w-6xl px-4 py-8 lg:py-12 space-y-8">
         {/* Header */}
-        <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2">
-            <img
-              src={logo}
-              alt="Habit Quest logo"
-              className="h-8 w-auto drop-shadow"
-            />
-            <h1 className="font-pixel text-lg text-primary text-glow">
-              HABIT QUEST
-            </h1>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="gap-2"
-              onClick={() => navigate('/history')}
-            >
-              <span aria-hidden="true">📊</span>
-              <span className="text-xs font-medium uppercase tracking-wide">History</span>
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="gap-2"
-              onClick={() => navigate('/settings')}
-            >
-              <span aria-hidden="true">⚙️</span>
-              <span className="text-xs font-medium uppercase tracking-wide">Settings</span>
-            </Button>
-            {!isGuest && (
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={handleLogout}
-                className="hidden sm:inline-flex"
-              >
-                Logout
-              </Button>
-            )}
-          </div>
-        </header>
+        <DashboardHeader onOpenLeaderboard={() => setLeaderboardOpen(true)} />
 
         <main className="grid gap-6 lg:grid-cols-[360px,minmax(0,1fr)] lg:items-start lg:gap-8 lg:min-h-[calc(100vh-12rem)]">
           <section className="flex flex-col gap-6 lg:sticky lg:top-12">
@@ -165,6 +125,11 @@ const Dashboard = () => {
             </div>
           </section>
         </main>
+
+        <LeaderboardModal
+          open={leaderboardOpen}
+          onOpenChange={setLeaderboardOpen}
+        />
 
         {/* Footer */}
         <div className="pt-4 border-t border-border flex justify-center lg:justify-end">
