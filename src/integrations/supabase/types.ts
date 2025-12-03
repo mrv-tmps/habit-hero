@@ -92,6 +92,8 @@ export type Database = {
           github_token: string | null
           id: string
           last_github_commit_date: string | null
+          current_title: string | null;
+          current_title_unlocked_at: string | null;
           onboarding_completed: boolean | null
           total_xp: number | null
           updated_at: string | null
@@ -105,6 +107,8 @@ export type Database = {
           github_token?: string | null
           id: string
           last_github_commit_date?: string | null
+          current_title?: string | null;
+          current_title_unlocked_at?: string | null;
           onboarding_completed?: boolean | null
           total_xp?: number | null
           updated_at?: string | null
@@ -118,6 +122,8 @@ export type Database = {
           github_token?: string | null
           id?: string
           last_github_commit_date?: string | null
+          current_title?: string | null;
+          current_title_unlocked_at?: string | null;
           onboarding_completed?: boolean | null
           total_xp?: number | null
           updated_at?: string | null

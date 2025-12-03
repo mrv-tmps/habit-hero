@@ -83,10 +83,25 @@ export default {
           from: { height: "var(--radix-accordion-content-height)" },
           to: { height: "0" },
         },
+        titlePulse: {
+          "0%": {
+            transform: "scale(1)",
+            boxShadow: "0 0 0px rgba(250,204,21,0)",
+          },
+          "50%": {
+            transform: "scale(1.06)",
+            boxShadow: "0 0 18px rgba(250,204,21,0.85)",
+          },
+          "100%": {
+            transform: "scale(1)",
+            boxShadow: "0 0 0px rgba(250,204,21,0)",
+          },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        titlePulse: "titlePulse 1.5s ease-in-out infinite",
       },
     },
   },
