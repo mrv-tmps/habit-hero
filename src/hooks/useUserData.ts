@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
+import { getTitleForXp } from '@/lib/titles';
 
 export interface UserStat {
   id: string;
@@ -21,6 +22,8 @@ export interface UserProfile {
   github_owner: string | null;
   github_repo: string | null;
   last_github_commit_date: string | null;
+  current_title: string | null;
+  current_title_unlocked_at: string | null;
 }
 
 interface HabitLog {
@@ -56,6 +59,8 @@ export function useUserData() {
         github_owner: null,
         github_repo: null,
         last_github_commit_date: null,
+        current_title: null,
+        current_title_unlocked_at: null,
       });
       setStats(data.stats || []);
 
@@ -80,7 +85,24 @@ export function useUserData() {
 
       if (profileError) throw profileError;
 
+
+      // inside loadUserData, after profileData is fetched:
+
       if (profileData) {
+        const computedTitle = getTitleForXp(profileData.total_xp || 0).name;
+        const needsTitleSync =
+          !profileData.current_title || profileData.current_title !== computedTitle;
+
+        if (needsTitleSync) {
+          await supabase
+            .from('profiles')
+            .update({
+              current_title: computedTitle,
+              current_title_unlocked_at: new Date().toISOString(),
+            })
+            .eq('id', user.id);
+        }
+
         setProfile({
           character_name: profileData.character_name || 'Hero',
           avatar: profileData.avatar || '🧑‍🚀',
@@ -90,8 +112,14 @@ export function useUserData() {
           github_owner: profileData.github_owner,
           github_repo: profileData.github_repo,
           last_github_commit_date: profileData.last_github_commit_date,
+          current_title: needsTitleSync
+            ? computedTitle
+            : profileData.current_title || computedTitle,
+          current_title_unlocked_at:
+            profileData.current_title_unlocked_at || new Date().toISOString(),
         });
       }
+
 
       // Fetch stats
       const { data: statsData, error: statsError } = await supabase
@@ -178,7 +206,8 @@ export function useUserData() {
       return {
         success: true,
         leveledUp: newLevel > oldLevel,
-        newLevel
+        newLevel,
+        newTitleUnlocked: null,
       };
     }
 
@@ -210,28 +239,53 @@ export function useUserData() {
           .eq('id', statId);
       }
 
-      // Update profile total XP
-      const newXp = (profile?.total_xp || 0) + 1;
-      await supabase
-        .from('profiles')
-        .update({ total_xp: newXp })
-        .eq('id', user.id);
+      const oldXp = profile?.total_xp || 0;
+      const newXp = oldXp + 1;
+
+      const oldTitleName = getTitleForXp(oldXp).name;
+      const newTitleTier = getTitleForXp(newXp);
+      const newTitleName = newTitleTier.name;
+      const titleChanged = newTitleName !== oldTitleName;
+      const nowIso = new Date().toISOString();
+
+      // Update profile total XP + title in DB
+      const profileUpdate: Record<string, unknown> = { total_xp: newXp };
+      if (titleChanged) {
+        profileUpdate.current_title = newTitleName;
+        profileUpdate.current_title_unlocked_at = nowIso;
+      }
+
+      await supabase.from('profiles').update(profileUpdate).eq('id', user.id);
 
       // Update local state
       const newLog: HabitLog = {
         stat_id: statId,
         completed_date: today,
-        stat_name_snapshot: statToSnapshot?.stat_name ?? null,
-        habit_description_snapshot: statToSnapshot?.habit_description ?? null,
+        stat_name_snapshot: stat?.stat_name ?? null,
+        habit_description_snapshot: stat?.habit_description ?? null,
       };
 
       setTodayLogs(prev => [...prev, newLog]);
       setAllLogs(prev => [...prev, newLog]);
 
-      setStats(prev => prev.map(s =>
-        s.id === statId ? { ...s, total_points: s.total_points + 1 } : s
-      ));
-      setProfile(prev => prev ? { ...prev, total_xp: newXp } : null);
+      setStats(prev =>
+        prev.map(s =>
+          s.id === statId ? { ...s, total_points: s.total_points + 1 } : s
+        )
+      );
+
+      setProfile(prev =>
+        prev
+          ? {
+            ...prev,
+            total_xp: newXp,
+            current_title: titleChanged ? newTitleName : (prev.current_title || newTitleName),
+            current_title_unlocked_at: titleChanged
+              ? nowIso
+              : prev.current_title_unlocked_at,
+          }
+          : null
+      );
 
       const newLevel = Math.floor(newXp / 10) + 1;
       const oldLevel = Math.floor((newXp - 1) / 10) + 1;
@@ -239,8 +293,10 @@ export function useUserData() {
       return {
         success: true,
         leveledUp: newLevel > oldLevel,
-        newLevel
+        newLevel,
+        newTitleUnlocked: titleChanged ? newTitleName : null,   // NEW
       };
+
     } catch (error: unknown) {
       console.error('Failed to complete stat:', error);
       const message = error instanceof Error ? error.message : String(error);
