@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Menu, X, LogOut } from 'lucide-react';
+import { Menu, X, LogOut, Gamepad2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import logo from '@/assets/habit-quest-logo.png';
@@ -22,6 +22,13 @@ export function DashboardHeader({
 
   // --- SHARED NAV BUTTONS (used in both desktop + mobile) ---
   const navButtons = [
+    {
+      key: 'games',
+      label: 'Games',
+      icon: <Gamepad2 className="h-4 w-4" />,
+      onClick: () => navigate('/games'),
+      variant: 'ghost',
+    },
     {
       key: 'history',
       label: '📊 History',

@@ -9,6 +9,8 @@ import Onboarding from "./pages/Onboarding";
 import Dashboard from "./pages/Dashboard";
 import History from "./pages/History";
 import Settings from "./pages/Settings";
+import GamesHub from "./pages/GamesHub";
+import TypingTest from "./pages/TypingTest";
 import ErrorPage from "./pages/Error";
 
 const queryClient = new QueryClient();
@@ -57,6 +59,8 @@ function AppRoutes() {
       <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/history" element={<ProtectedRoute><History /></ProtectedRoute>} />
       <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+      <Route path="/games" element={<ProtectedRoute><GamesHub /></ProtectedRoute>} />
+      <Route path="/games/typing" element={<ProtectedRoute><TypingTest /></ProtectedRoute>} />
       <Route path="/error" element={<ErrorPage />} />
       <Route path="*" element={<ErrorPage />} />
     </Routes>

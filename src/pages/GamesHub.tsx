@@ -1,0 +1,106 @@
+import { useNavigate } from 'react-router-dom';
+import { ArrowLeft, ChevronRight } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { GAMES, type GameConfig } from '@/config/games';
+import { cn } from '@/lib/utils';
+
+function GameCard({ game, onPlay }: { game: GameConfig; onPlay: () => void }) {
+  const Icon = game.icon;
+  const isLive = game.status === 'live';
+
+  return (
+    <div
+      className={cn(
+        'rounded-xl border border-border bg-card p-6 flex flex-col gap-4 transition-colors duration-200',
+        isLive
+          ? 'cursor-pointer hover:border-primary/50 hover:bg-secondary'
+          : 'opacity-60 cursor-default',
+      )}
+      onClick={isLive ? onPlay : undefined}
+    >
+      <div className="flex items-start justify-between">
+        <Icon className="w-8 h-8 text-primary" />
+        <Badge
+          className={cn(
+            'text-xs font-sans',
+            isLive
+              ? 'bg-[hsl(var(--game-live)/0.15)] text-[hsl(var(--game-live))] border-[hsl(var(--game-live)/0.3)]'
+              : 'bg-muted text-[hsl(var(--game-coming-soon))] border-border',
+          )}
+          variant="outline"
+        >
+          {isLive ? 'LIVE' : 'COMING SOON'}
+        </Badge>
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <h2 className="text-lg font-semibold text-foreground">{game.label}</h2>
+        <p className="text-sm text-muted-foreground">{game.description}</p>
+      </div>
+
+      {isLive && (
+        <Button
+          size="sm"
+          className="self-start flex items-center gap-1"
+          onClick={e => { e.stopPropagation(); onPlay(); }}
+        >
+          Play Now <ChevronRight className="w-4 h-4" />
+        </Button>
+      )}
+    </div>
+  );
+}
+
+export default function GamesHub() {
+  const navigate = useNavigate();
+
+  return (
+    <div className="min-h-screen bg-background p-4 md:p-8">
+      <div className="max-w-3xl mx-auto">
+        {/* Header */}
+        <div className="flex items-center gap-3 mb-8">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate('/')}
+            className="flex items-center gap-1 text-muted-foreground hover:text-foreground"
+            aria-label="Back to dashboard"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span className="hidden sm:inline">Dashboard</span>
+          </Button>
+          <div className="flex flex-col">
+            <h1 className="font-pixel text-primary text-glow text-sm leading-none">
+              MINIGAMES
+            </h1>
+            <p className="text-muted-foreground text-xs mt-1">
+              Play skill-based games to earn XP for your stats
+            </p>
+          </div>
+        </div>
+
+        {/* Game grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {GAMES.map(game => (
+            <GameCard
+              key={game.id}
+              game={game}
+              onPlay={() => navigate(game.route)}
+            />
+          ))}
+        </div>
+
+        {/* XP rules */}
+        <div className="mt-8 rounded-xl border border-border bg-card/50 p-4">
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            <span className="text-foreground font-medium">XP rules:</span>{' '}
+            Each game awards up to <span className="text-primary">10 XP</span> per session based on
+            performance. The first <span className="text-primary">3 sessions</span> per day per game
+            earn XP — unlimited free play after that. XP goes to the stat you link in the game.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
