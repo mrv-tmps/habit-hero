@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -53,6 +53,18 @@
     --sidebar-accent-foreground: 45 20% 95%;
     --sidebar-border: 240 10% 25%;
     --sidebar-ring: 45 90% 55%;
+
+    /* Focused mode — active typing state (data-mode="focused") */
+    --focused-bg: 240 15% 5%;
+    --focused-text-dim: 240 5% 45%;
+    --focused-text-correct: 45 20% 90%;
+    --focused-text-incorrect: 0 75% 55%;
+    --focused-text-current: 45 90% 55%;
+    --focused-caret: 45 90% 55%;
+
+    /* Game hub */
+    --game-live: 140 65% 45%;
+    --game-coming-soon: 240 5% 35%;
   }
 }
 
@@ -117,5 +129,55 @@
 
   .animate-point-added {
     animation: point-added 0.6s ease-out forwards;
+  }
+
+  @keyframes caret-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+
+  @keyframes char-error {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-3px); }
+    75% { transform: translateX(3px); }
+  }
+
+  .animate-caret-blink {
+    animation: caret-blink 1s ease-in-out infinite;
+  }
+
+  .animate-char-error {
+    animation: char-error 0.2s ease-in-out;
+  }
+
+  /* Focused mode — applied via data-mode="focused" on page wrapper */
+  [data-mode="focused"] {
+    background-color: hsl(var(--focused-bg));
+  }
+
+  [data-mode="focused"] .text-glow,
+  [data-mode="focused"] .stat-glow-strength,
+  [data-mode="focused"] .stat-glow-intelligence,
+  [data-mode="focused"] .stat-glow-endurance,
+  [data-mode="focused"] .card-glow {
+    text-shadow: none;
+    box-shadow: none;
+  }
+
+  /* Focused mode character colors for typing display */
+  .char-dim     { color: hsl(var(--focused-text-dim)); }
+  .char-correct { color: hsl(var(--focused-text-correct)); }
+  .char-incorrect { color: hsl(var(--focused-text-incorrect)); }
+  .char-current { color: hsl(var(--focused-text-current)); }
+
+  /* prefers-reduced-motion */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-titlePulse,
+    .animate-pulse-glow,
+    .animate-level-up,
+    .animate-caret-blink,
+    .animate-char-error {
+      animation: none;
+    }
   }
 }

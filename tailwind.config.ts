@@ -18,6 +18,7 @@ export default {
       fontFamily: {
         sans: ['Inter', 'sans-serif'],
         pixel: ['"Press Start 2P"', 'cursive'],
+        mono: ['"JetBrains Mono"', 'monospace'],
       },
       colors: {
         border: "hsl(var(--border))",
@@ -58,6 +59,18 @@ export default {
         endurance: "hsl(var(--endurance))",
         xpGlow: "hsl(var(--xp-glow))",
         levelBadge: "hsl(var(--level-badge))",
+        focused: {
+          bg: "hsl(var(--focused-bg))",
+          dim: "hsl(var(--focused-text-dim))",
+          correct: "hsl(var(--focused-text-correct))",
+          incorrect: "hsl(var(--focused-text-incorrect))",
+          current: "hsl(var(--focused-text-current))",
+          caret: "hsl(var(--focused-caret))",
+        },
+        game: {
+          live: "hsl(var(--game-live))",
+          comingSoon: "hsl(var(--game-coming-soon))",
+        },
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
           foreground: "hsl(var(--sidebar-foreground))",
@@ -97,11 +110,22 @@ export default {
             boxShadow: "0 0 0px rgba(250,204,21,0)",
           },
         },
+        "caret-blink": {
+          "0%, 100%": { opacity: "1" },
+          "50%": { opacity: "0" },
+        },
+        "char-error": {
+          "0%, 100%": { transform: "translateX(0)" },
+          "25%": { transform: "translateX(-3px)" },
+          "75%": { transform: "translateX(3px)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         titlePulse: "titlePulse 1.5s ease-in-out infinite",
+        "caret-blink": "caret-blink 1s ease-in-out infinite",
+        "char-error": "char-error 0.2s ease-in-out",
       },
     },
   },
