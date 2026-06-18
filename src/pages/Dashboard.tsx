@@ -20,8 +20,6 @@ const Dashboard = () => {
     completeStat,
     canComplete,
     level,
-    xpProgress,
-    xpToNextLevel,
   } = useUserData();
   const [message, setMessage] = useState<string | null>(null);
   const [isLevelingUp, setIsLevelingUp] = useState(false);
@@ -96,9 +94,6 @@ const Dashboard = () => {
               avatar={profile.avatar}
               name={profile.character_name}
               level={level}
-              xpProgress={xpProgress}
-              xpToNextLevel={xpToNextLevel}
-              totalPoints={profile.total_xp}
               isLevelingUp={isLevelingUp}
             />
           </section>

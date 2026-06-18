@@ -1,14 +1,13 @@
+import { useState } from 'react';
 import { useUserData } from '@/hooks/useUserData';
 import { cn } from '@/lib/utils';
 import { getTitleForXp, TITLE_TIERS, getStarCountForTitle } from '@/lib/titles';
+import { RanksModal } from '@/components/RanksModal';
 
 interface CharacterCardProps {
   avatar: string;
   name?: string;
   level: number;
-  xpProgress: number;
-  xpToNextLevel: number;
-  totalPoints: number;
   isLevelingUp: boolean;
 }
 
@@ -30,11 +29,9 @@ export function CharacterCard({
   avatar,
   name,
   level,
-  xpProgress,
-  xpToNextLevel,
-  totalPoints,
   isLevelingUp
 }: CharacterCardProps) {
+  const [ranksOpen, setRanksOpen] = useState(false);
   const { profile } = useUserData();
   const totalXp = profile?.total_xp ?? 0;
   const titleText = profile?.current_title ?? getTitleForXp(totalXp).name;
@@ -42,8 +39,13 @@ export function CharacterCard({
   const recentTitle = isTitleRecentlyUnlocked(profile?.current_title_unlocked_at);
   const nextTitle = getNextTitle(totalXp);
   const xpToNextTitle = nextTitle ? Math.max(0, nextTitle.minXp - totalXp) : 0;
+  const currentTitleTier = getTitleForXp(totalXp);
+  const rankProgressPct = nextTitle
+    ? Math.min(100, Math.max(0, (totalXp - currentTitleTier.minXp) / (nextTitle.minXp - currentTitleTier.minXp) * 100))
+    : 100;
 
   return (
+    <>
     <div className="relative rounded-xl bg-card p-6 card-glow border border-border">
       {/* Level badge */}
       <div className="absolute -top-3 -right-3 bg-levelBadge px-3 py-1 rounded-full font-pixel text-xs text-foreground">
@@ -96,37 +98,38 @@ export function CharacterCard({
           </div>
 
 
-          {/* Next title hint */}
-          <p className="text-[11px] text-muted-foreground">
-            {nextTitle ? (
-              <>
-                Next: <span className="text-primary">{nextTitle.name}</span>
-                {" · "}
-                {xpToNextTitle.toLocaleString()} XP
-              </>
-            ) : (
-              <span className="text-primary/80">Final title reached</span>
-            )}
-          </p>
         </div>
 
-        {/* XP Bar */}
+        {/* Rank Progress Bar */}
         <div className="w-full space-y-2">
-          <div className="flex justify-between text-xs text-muted-foreground">
-            <span>XP</span>
-            <span>{xpToNextLevel} to next level</span>
+          <div className="flex justify-between items-center text-xs text-muted-foreground">
+            <button
+              onClick={() => setRanksOpen(true)}
+              className="flex items-center gap-1 rounded-md bg-muted/60 border border-border/60 px-2 py-0.5 text-xs font-medium text-foreground active:scale-95 transition-transform"
+            >
+              Rank Progress
+              <span className="text-[10px] text-muted-foreground">▶</span>
+            </button>
+            <span>
+              {nextTitle
+                ? `${xpToNextTitle.toLocaleString()} XP to ${nextTitle.name}`
+                : 'Max rank reached!'}
+            </span>
           </div>
           <div className="h-3 bg-muted rounded-full overflow-hidden">
             <div
               className="h-full bg-primary rounded-full transition-all duration-500 animate-pulse-glow"
-              style={{ width: `${xpProgress}%` }}
+              style={{ width: `${rankProgressPct}%` }}
             />
           </div>
           <p className="text-center text-xs text-muted-foreground">
-            Total Points: {totalPoints}
+            Lv.{level} · Total XP: {totalXp.toLocaleString()}
           </p>
         </div>
       </div>
-    </div >
+    </div>
+
+    <RanksModal open={ranksOpen} onOpenChange={setRanksOpen} totalXp={totalXp} />
+    </>
   );
 }

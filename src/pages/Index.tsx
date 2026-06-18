@@ -17,8 +17,6 @@ const Index = () => {
     githubConfig,
     saveGitHubConfig,
     clearGitHubConfig,
-    xpProgress,
-    xpToNextLevel,
   } = useHabitTracker();
 
   return (
@@ -50,9 +48,6 @@ const Index = () => {
         <CharacterCard
           avatar={data.avatar}
           level={data.level}
-          xpProgress={xpProgress}
-          xpToNextLevel={xpToNextLevel}
-          totalPoints={data.totalPoints}
           isLevelingUp={isLevelingUp}
         />
 
