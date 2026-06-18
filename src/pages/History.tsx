@@ -189,15 +189,14 @@ const History = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="min-h-screen page-bg flex items-center justify-center">
         <div className="text-primary animate-pulse font-pixel">Loading...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="relative inset-0 bg-gradient-to-br from-background via-background to-levelBadge/10 pointer-events-none -z-10" />
+    <div className="min-h-screen page-bg">
 
       <div className="relative mx-auto w-full max-w-7xl px-4 py-8 space-y-8">
         {/* Header */}

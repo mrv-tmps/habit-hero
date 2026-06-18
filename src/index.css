@@ -150,9 +150,25 @@
     animation: char-error 0.2s ease-in-out;
   }
 
+  /* Page background: dot grid + ambient corner glows. Use on every page root div. */
+  .page-bg {
+    background-color: hsl(var(--background));
+    background-image:
+      /* Dot grid */
+      radial-gradient(circle, hsl(var(--border) / 0.5) 1px, transparent 1px),
+      /* Purple ambient glow — bottom-right */
+      radial-gradient(ellipse 60% 50% at 90% 100%, hsl(var(--accent) / 0.07) 0%, transparent 65%),
+      /* Gold ambient glow — top-center */
+      radial-gradient(ellipse 50% 30% at 50% -5%, hsl(var(--primary) / 0.05) 0%, transparent 65%);
+    background-size: 28px 28px, 100% 100%, 100% 100%;
+    background-attachment: fixed, fixed, fixed;
+  }
+
   /* Focused mode — applied via data-mode="focused" on page wrapper */
   [data-mode="focused"] {
     background-color: hsl(var(--focused-bg));
+    /* Strip dot grid so the typing surface stays clean */
+    background-image: none;
   }
 
   [data-mode="focused"] .text-glow,

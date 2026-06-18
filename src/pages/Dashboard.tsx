@@ -58,7 +58,7 @@ const Dashboard = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="min-h-screen page-bg flex items-center justify-center">
         <div className="text-primary animate-pulse font-pixel">Loading...</div>
       </div>
     );
@@ -67,7 +67,7 @@ const Dashboard = () => {
   // If no profile or stats, redirect to onboarding
   if (!profile || stats.length === 0) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="min-h-screen page-bg flex items-center justify-center">
         <div className="text-center space-y-4">
           <p className="text-muted-foreground">No character found</p>
           <Button onClick={() => navigate('/onboarding')}>Create Character</Button>
@@ -77,8 +77,7 @@ const Dashboard = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="fixed inset-0 bg-gradient-to-br from-background via-background to-levelBadge/10 pointer-events-none -z-10" />
+    <div className="min-h-screen page-bg">
 
       <div className="relative mx-auto w-full max-w-6xl px-4 py-8 lg:py-12 space-y-8">
         {/* Header */}

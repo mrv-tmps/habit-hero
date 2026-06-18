@@ -12,15 +12,23 @@ function GameCard({ game, onPlay }: { game: GameConfig; onPlay: () => void }) {
   return (
     <div
       className={cn(
-        'rounded-xl border border-border bg-card p-6 flex flex-col gap-4 transition-colors duration-200',
+        'group rounded-xl border bg-card p-6 flex flex-col gap-4 transition-all duration-200',
         isLive
-          ? 'cursor-pointer hover:border-primary/50 hover:bg-secondary'
-          : 'opacity-60 cursor-default',
+          ? 'cursor-pointer border-border hover:border-primary/50 hover:bg-secondary/60 hover:shadow-[0_0_24px_hsl(var(--primary)/0.12)]'
+          : 'border-border/50 opacity-60 cursor-default',
       )}
       onClick={isLive ? onPlay : undefined}
     >
       <div className="flex items-start justify-between">
-        <Icon className="w-8 h-8 text-primary" />
+        {/* Icon container */}
+        <div className={cn(
+          'w-11 h-11 rounded-lg flex items-center justify-center border transition-colors duration-200',
+          isLive
+            ? 'bg-primary/10 border-primary/25 group-hover:bg-primary/15 group-hover:border-primary/40'
+            : 'bg-muted/40 border-border/40',
+        )}>
+          <Icon className={cn('w-5 h-5', isLive ? 'text-primary' : 'text-muted-foreground')} />
+        </div>
         <Badge
           className={cn(
             'text-xs font-sans',
@@ -35,7 +43,12 @@ function GameCard({ game, onPlay }: { game: GameConfig; onPlay: () => void }) {
       </div>
 
       <div className="flex flex-col gap-1">
-        <h2 className="text-lg font-semibold text-foreground">{game.label}</h2>
+        <h2 className={cn(
+          'text-lg font-semibold transition-colors duration-200',
+          isLive ? 'text-foreground group-hover:text-primary' : 'text-muted-foreground',
+        )}>
+          {game.label}
+        </h2>
         <p className="text-sm text-muted-foreground">{game.description}</p>
       </div>
 
@@ -56,7 +69,7 @@ export default function GamesHub() {
   const navigate = useNavigate();
 
   return (
-    <div className="min-h-screen bg-background p-4 md:p-8">
+    <div className="min-h-screen page-bg p-4 md:p-8">
       <div className="max-w-3xl mx-auto">
         {/* Header */}
         <div className="flex items-center gap-3 mb-8">

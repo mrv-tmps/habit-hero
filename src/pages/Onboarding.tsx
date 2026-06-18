@@ -136,8 +136,7 @@ const Onboarding = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background py-8 px-4">
-      <div className="fixed inset-0 bg-gradient-to-br from-background via-background to-levelBadge/10 pointer-events-none -z-10" />
+    <div className="min-h-screen page-bg py-8 px-4">
 
       <div className="relative mx-auto w-full max-w-6xl space-y-8">
         {/* Header */}

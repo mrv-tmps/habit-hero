@@ -56,9 +56,7 @@ const Auth = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      {/* Background gradient */}
-      <div className="fixed inset-0 bg-gradient-to-br from-background via-background to-levelBadge/10 pointer-events-none" />
+    <div className="min-h-screen page-bg flex items-center justify-center p-4">
 
       <div className="relative w-full max-w-sm space-y-8">
         {/* Logo/Title */}

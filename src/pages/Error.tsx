@@ -5,9 +5,7 @@ const ErrorPage = () => {
   const navigate = useNavigate();
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      {/* Background glow */}
-      <div className="pointer-events-none fixed inset-0 -z-10 bg-gradient-to-br from-background via-background to-levelBadge/10" />
+    <div className="min-h-screen page-bg text-foreground">
 
       <div className="mx-auto flex min-h-screen max-w-4xl flex-col px-4 py-8">
         {/* Header */}
