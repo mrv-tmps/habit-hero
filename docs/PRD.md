@@ -1,6 +1,6 @@
 # Habit Quest — Product Requirements Document
 
-**Last updated:** 2026-06-18
+**Last updated:** 2026-06-19
 **Status:** Active development — pre-public launch
 
 ---
@@ -53,16 +53,20 @@ Key differentiating choices:
 | **Leaderboard** | Top 20 players ranked by total XP. Accessible via modal from the dashboard header. |
 | **GitHub integration** | Optional: connect a GitHub repo; last commit date is tracked on the profile for use as an implicit "coding" habit signal. |
 | **Responsive UI** | Mobile-first on habit-tracking pages (375px design target). Tailwind + shadcn/ui components. |
+| **Typing Test minigame** | 30s / 60s time mode. ~200-word pool. XP formula: `floor((WPM / 10) * accuracy)` capped at 10 XP. 3 XP-earning sessions per day; unlimited free play after. Focused mode UI (desktop-first, mobile fallback warning). User picks which stat earns XP once per game type. |
+| **Math Challenge minigame** | 30s / 60s time mode. Arithmetic problems (addition, subtraction, multiplication, division). XP formula: `floor((correct / 2) * accuracy)` capped at 10 XP. Same session/stat-mapping rules as Typing Test. |
+| **Games Hub (`/games`)** | Top-level public route. Grid of game cards driven by the `GameConfig` registry. Shows LIVE / COMING SOON badge per game. |
+| **Game stat mapping** | User selects which stat earns XP for each game type on first play. Stored permanently in `game_stat_mappings`; never prompted again. |
+| **Session persistence** | All minigame sessions stored in `game_sessions` (score, accuracy, XP, timestamp). Typing Test has a personal history page at `/games/typing/history`. |
+| **Public game access** | `/games`, `/games/typing`, and `/games/math` require no authentication. Anonymous visitors play freely; XP is not saved. Results screen prompts sign-in. |
+| **Landing page games section** | THE ARENA section on `/landing` shows live game cards linking directly to the games. "Games" nav link added. "No account needed" note visible. |
 
 ### In progress / next
 
-| Feature | Description | Status |
-|---|---|---|
-| **Typing Test minigame** | 30s / 60s time mode. ~200–300 word pool. XP formula: `floor((WPM / 10) * accuracy)`, capped at 10 XP per session. 3 sessions per day earn XP; unlimited free play after. Focused mode UI (desktop-first, mobile fallback warning). Stat credit: user picks which stat earns XP once per game type. | Planned |
-| **Games Hub (`/games`)** | Top-level route alongside History and Settings. Grid of game cards using the `GameConfig` registry. Shows live/coming-soon status badge per game. | Planned |
-| **Game stat mapping** | User selects which stat earns XP for each game type. Stored permanently in `game_stat_mappings`. | Planned |
-| **Session persistence** | All minigame sessions stored in `game_sessions` (WPM, accuracy, XP, timestamp). Queryable for history / personal bests. | Planned |
-| **Math / Arithmetic Challenge** | Second minigame on the hub (coming-soon card). Spec not yet written. | Future |
+| Feature | Description |
+|---|---|
+| **Math Challenge history page** | Personal session history at `/games/math/history`, mirroring the typing history page. |
+| **Personal bests** | Per-game best score/WPM/accuracy displayed on the game page or hub card. |
 
 ### Planned (post-minigames)
 
@@ -82,7 +86,8 @@ These values are the source of truth. Match them everywhere — DB, game logic, 
 | XP per habit completion | 1 |
 | XP per minigame session cap | 10 |
 | Minigame daily session cap (XP-earning) | 3 |
-| Minigame XP formula | `floor((WPM / 10) * accuracy)` |
+| Typing Test XP formula | `floor((WPM / 10) * accuracy)` — accuracy 0–1 |
+| Math Challenge XP formula | `floor((correct / 2) * accuracy)` — accuracy 0–1; ~20 correct at 100% = 10 XP cap |
 | Level formula | `floor(total_xp / 10) + 1` |
 | Title tiers | 16 (New Traveler → Shadow Monarch) |
 

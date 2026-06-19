@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   Sword, Zap, Trophy, Target, ChevronRight,
-  Star, Keyboard, Brain, Flame, Menu, X,
+  Star, Keyboard, Brain, Calculator, Flame, Menu, X,
 } from "lucide-react";
 import { TITLE_TIERS } from "@/lib/titles";
 
@@ -350,6 +350,12 @@ export default function Landing() {
           {/* Desktop nav */}
           <div className="hidden sm:flex items-center gap-3">
             <button
+              onClick={() => navigate("/games")}
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+            >
+              Games
+            </button>
+            <button
               onClick={() => navigate("/auth")}
               className="text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
             >
@@ -389,8 +395,14 @@ export default function Landing() {
         >
           <div className="p-4 flex flex-col gap-3">
             <button
-              onClick={() => { navigate("/auth"); setMenuOpen(false); }}
+              onClick={() => { navigate("/games"); setMenuOpen(false); }}
               className="text-sm text-foreground font-medium text-left cursor-pointer"
+            >
+              Play games
+            </button>
+            <button
+              onClick={() => { navigate("/auth"); setMenuOpen(false); }}
+              className="text-sm text-muted-foreground text-left cursor-pointer"
             >
               Sign in
             </button>
@@ -550,8 +562,8 @@ export default function Landing() {
               Skills that level you up
             </h2>
             <p className="text-muted-foreground text-sm mb-7 max-w-md">
-              Play mini-games to earn bonus XP on top of your habits. The typing test
-              challenges your speed and accuracy — more games on the way.
+              Play mini-games to earn bonus XP on top of your habits. Try the typing
+              test or math challenge right now — no account needed.
             </p>
             <TypingDemo />
             <div className="mt-5 flex flex-wrap gap-4">
@@ -616,14 +628,14 @@ export default function Landing() {
           <span className="font-pixel text-primary text-xs tracking-widest">THE ARENA</span>
         </Reveal>
         <Reveal delay={80} className="text-center mb-10">
-          <p className="text-muted-foreground text-sm">More ways to earn XP are on the way</p>
+          <p className="text-muted-foreground text-sm">Skill-based mini-games that reward real effort</p>
         </Reveal>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <Reveal delay={0}>
             <div
-              className="rounded-xl border border-primary/30 bg-card p-5 hover:border-primary/60 hover:-translate-y-1 transition-all duration-300 cursor-pointer h-full"
-              onClick={() => navigate("/auth")}
+              className="rounded-xl border border-primary/30 bg-card p-5 hover:border-primary/60 hover:-translate-y-1 hover:shadow-[0_0_24px_hsl(var(--primary)/0.10)] transition-all duration-300 cursor-pointer h-full flex flex-col"
+              onClick={() => navigate("/games/typing")}
             >
               <div className="flex items-center justify-between mb-3">
                 <div className="p-2 rounded-lg bg-primary/10">
@@ -632,28 +644,54 @@ export default function Landing() {
                 <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-primary/20 text-primary">LIVE</span>
               </div>
               <h4 className="font-semibold text-foreground mb-1">Typing Test</h4>
-              <p className="text-xs text-muted-foreground">Race through words. Earn XP for speed and accuracy.</p>
+              <p className="text-xs text-muted-foreground flex-1">Race through words. Earn XP for speed and accuracy.</p>
+              <span className="text-xs font-mono text-primary/70 mt-3 inline-block">Play now →</span>
             </div>
           </Reveal>
 
-          {[
-            { icon: Brain, label: "Memory Match", desc: "Train your recall. Pattern recognition mini-game.", delay: 100 },
-            { icon: Sword, label: "Focus Sprint", desc: "Deep work timer with XP rewards for staying locked in.", delay: 200 },
-          ].map(({ icon: Icon, label, desc, delay }) => (
-            <Reveal key={label} delay={delay}>
-              <div className="rounded-xl border border-border bg-card/40 p-5 opacity-50 h-full">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="p-2 rounded-lg bg-muted">
-                    <Icon className="w-4 h-4 text-muted-foreground" />
-                  </div>
-                  <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-muted text-muted-foreground">SOON</span>
+          <Reveal delay={100}>
+            <div
+              className="rounded-xl border border-primary/30 bg-card p-5 hover:border-primary/60 hover:-translate-y-1 hover:shadow-[0_0_24px_hsl(var(--primary)/0.10)] transition-all duration-300 cursor-pointer h-full flex flex-col"
+              onClick={() => navigate("/games/math")}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2 rounded-lg bg-primary/10">
+                  <Calculator className="w-4 h-4 text-primary" />
                 </div>
-                <h4 className="font-semibold text-muted-foreground mb-1">{label}</h4>
-                <p className="text-xs text-muted-foreground/60">{desc}</p>
+                <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-primary/20 text-primary">LIVE</span>
               </div>
-            </Reveal>
-          ))}
+              <h4 className="font-semibold text-foreground mb-1">Math Challenge</h4>
+              <p className="text-xs text-muted-foreground flex-1">Solve arithmetic problems under pressure. Beat the clock.</p>
+              <span className="text-xs font-mono text-primary/70 mt-3 inline-block">Play now →</span>
+            </div>
+          </Reveal>
+
+          <Reveal delay={200}>
+            <div className="rounded-xl border border-border bg-card/40 p-5 opacity-50 h-full flex flex-col">
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2 rounded-lg bg-muted">
+                  <Sword className="w-4 h-4 text-muted-foreground" />
+                </div>
+                <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-muted text-muted-foreground">SOON</span>
+              </div>
+              <h4 className="font-semibold text-muted-foreground mb-1">More games</h4>
+              <p className="text-xs text-muted-foreground/60 flex-1">New skill-based mini-games dropping regularly.</p>
+            </div>
+          </Reveal>
         </div>
+
+        <Reveal delay={250} className="text-center mt-6">
+          <p className="text-xs text-muted-foreground">
+            No account needed to play ·{" "}
+            <button
+              onClick={() => navigate("/auth")}
+              className="underline underline-offset-2 hover:text-foreground transition-colors cursor-pointer"
+            >
+              sign in
+            </button>{" "}
+            anytime to save XP to your character
+          </p>
+        </Reveal>
       </section>
 
       {/* ------------------------------------------------------------------ */}

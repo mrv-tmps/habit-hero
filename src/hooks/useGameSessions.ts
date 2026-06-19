@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { getTitleForXp } from '@/lib/titles';
@@ -31,8 +31,18 @@ function getTodayStart(): string {
   return d.toISOString();
 }
 
-export function useGameSessions(gameType: string): UseGameSessionsResult {
+interface UseGameSessionsOptions {
+  customXpFormula?: (score: number, accuracy: number) => number;
+}
+
+export function useGameSessions(
+  gameType: string,
+  options: UseGameSessionsOptions = {},
+): UseGameSessionsResult {
   const { user } = useAuth();
+  const xpFormulaRef = useRef(options.customXpFormula ?? computeXp);
+  xpFormulaRef.current = options.customXpFormula ?? computeXp;
+
   const [statMapping, setStatMapping] = useState<string | null>(null);
   const [todaySessionCount, setTodaySessionCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -90,7 +100,7 @@ export function useGameSessions(gameType: string): UseGameSessionsResult {
     if (!user) return null;
 
     const canEarn = todaySessionCount < DAILY_SESSION_CAP;
-    const xpEarned = canEarn && statMapping ? computeXp(wpm, accuracy) : 0;
+    const xpEarned = canEarn && statMapping ? xpFormulaRef.current(wpm, accuracy) : 0;
 
     const db = supabase as any;
 

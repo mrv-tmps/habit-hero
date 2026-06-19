@@ -19,43 +19,61 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserData } from '@/hooks/useUserData';
 import { useGameSessions } from '@/hooks/useGameSessions';
-import { WORD_LIST } from '@/data/wordList';
-import { TYPING_WORD_POOL_SIZE, TYPING_TIMER_OPTIONS } from '@/config/constants';
+import { MATH_TIMER_OPTIONS, XP_PER_SESSION_CAP } from '@/config/constants';
 import { cn } from '@/lib/utils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Phase = 'idle' | 'active' | 'done';
-type TimerMode = typeof TYPING_TIMER_OPTIONS[number];
+type TimerMode = typeof MATH_TIMER_OPTIONS[number];
 
-interface WordResult {
-  typed: string;
-  target: string;
+interface MathProblem {
+  question: string;
+  answer: number;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function generatePool(): string[] {
-  return [...WORD_LIST].sort(() => Math.random() - 0.5).slice(0, TYPING_WORD_POOL_SIZE);
+function randInt(min: number, max: number): number {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-function computeFinalMetrics(results: WordResult[], mode: number) {
-  const correctWords = results.filter(r => r.typed === r.target).length;
-  const wpm = Math.round((correctWords / mode) * 60);
+function generateProblem(): MathProblem {
+  const opIdx = randInt(0, 3);
 
-  const totalTyped = results.reduce((s, r) => s + r.typed.length, 0);
-  const correctTyped = results.reduce(
-    (s, r) => s + r.typed.split('').filter((c, i) => c === r.target[i]).length,
-    0,
-  );
-  const accuracy = totalTyped > 0 ? Math.round((correctTyped / totalTyped) * 100) : 100;
+  switch (opIdx) {
+    case 0: {
+      const a = randInt(10, 99);
+      const b = randInt(10, 99);
+      return { question: `${a} + ${b}`, answer: a + b };
+    }
+    case 1: {
+      const a = randInt(20, 99);
+      const b = randInt(1, Math.min(a - 1, 30));
+      return { question: `${a} − ${b}`, answer: a - b };
+    }
+    case 2: {
+      const a = randInt(2, 12);
+      const b = randInt(2, 12);
+      return { question: `${a} × ${b}`, answer: a * b };
+    }
+    default: {
+      const divisor = randInt(2, 12);
+      const quotient = randInt(2, 12);
+      return { question: `${divisor * quotient} ÷ ${divisor}`, answer: quotient };
+    }
+  }
+}
 
-  return { wpm, accuracy };
+// XP formula: 20 correct @ 100% acc = 10 XP cap; scales linearly below that.
+// accuracy is 0-100 (percentage).
+function mathXp(score: number, accuracy: number): number {
+  return Math.min(Math.floor((score / 2) * (accuracy / 100)), XP_PER_SESSION_CAP);
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export default function TypingTest() {
+export default function MathChallenge() {
   const navigate = useNavigate();
   const { user, isGuest } = useAuth();
   const { stats: userStats, loading: statsLoading } = useUserData();
@@ -66,22 +84,26 @@ export default function TypingTest() {
     loading: sessionsLoading,
     saveSession,
     saveStatMapping,
-  } = useGameSessions('typing');
+  } = useGameSessions('math', { customXpFormula: mathXp });
 
   // ── Game state ──────────────────────────────────────────────────────────────
   const [mode, setMode] = useState<TimerMode>(30);
   const [phase, setPhase] = useState<Phase>('idle');
-  const [words, setWords] = useState<string[]>(generatePool);
-  const [wordIdx, setWordIdx] = useState(0);
-  const [typedChars, setTypedChars] = useState('');
-  const [wordResults, setWordResults] = useState<WordResult[]>([]);
+  const [problem, setProblem] = useState<MathProblem>(generateProblem);
+  const [inputValue, setInputValue] = useState('');
   const [timeLeft, setTimeLeft] = useState<number>(30);
-  const [scrollOffset, setScrollOffset] = useState(0);
+  const [lastResult, setLastResult] = useState<'correct' | 'incorrect' | null>(null);
+
+  // Track counts in refs so the done effect always sees the final values.
+  const correctRef = useRef(0);
+  const totalRef = useRef(0);
+  const [correctCount, setCorrectCountState] = useState(0);
+  const [totalCount, setTotalCountState] = useState(0);
 
   // ── Result state ────────────────────────────────────────────────────────────
   const [sessionSaving, setSessionSaving] = useState(false);
-  const [sessionWpm, setSessionWpm] = useState(0);
-  const [sessionAccuracy, setSessionAccuracy] = useState(100);
+  const [sessionScore, setSessionScore] = useState(0);
+  const [sessionAccuracy, setSessionAccuracy] = useState(0);
   const [sessionXp, setSessionXp] = useState(0);
   const [leveledUp, setLeveledUp] = useState(false);
   const [newTitle, setNewTitle] = useState<string | null>(null);
@@ -92,9 +114,8 @@ export default function TypingTest() {
 
   // ── Refs ────────────────────────────────────────────────────────────────────
   const inputRef = useRef<HTMLInputElement>(null);
-  const wordRefs = useRef<Array<HTMLSpanElement | null>>([]);
-  const innerRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const feedbackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Mobile detection ────────────────────────────────────────────────────────
   const [isMobile, setIsMobile] = useState(false);
@@ -115,18 +136,10 @@ export default function TypingTest() {
     if (phase === 'idle') setTimeLeft(mode);
   }, [mode, phase]);
 
-  // ── Focus input when active ─────────────────────────────────────────────────
+  // ── Focus input ─────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (phase === 'active') inputRef.current?.focus();
+    if (phase !== 'done') inputRef.current?.focus();
   }, [phase]);
-
-  // ── Scroll current word into view ───────────────────────────────────────────
-  useEffect(() => {
-    const el = wordRefs.current[wordIdx];
-    if (!el || !innerRef.current) return;
-    const lineH = el.offsetHeight + 4;
-    setScrollOffset(Math.max(0, el.offsetTop - lineH));
-  }, [wordIdx]);
 
   // ── Timer ───────────────────────────────────────────────────────────────────
   const stopTimer = useCallback(() => {
@@ -152,14 +165,18 @@ export default function TypingTest() {
   }, [stopTimer]);
 
   useEffect(() => () => stopTimer(), [stopTimer]);
+  useEffect(() => () => { if (feedbackRef.current) clearTimeout(feedbackRef.current); }, []);
 
   // ── Save session when done ──────────────────────────────────────────────────
   useEffect(() => {
     if (phase !== 'done') return;
 
-    const { wpm, accuracy } = computeFinalMetrics(wordResults, mode);
-    setSessionWpm(wpm);
-    setSessionAccuracy(accuracy);
+    const finalScore = correctRef.current;
+    const finalAccuracy =
+      totalRef.current > 0 ? Math.round((correctRef.current / totalRef.current) * 100) : 0;
+
+    setSessionScore(finalScore);
+    setSessionAccuracy(finalAccuracy);
 
     if (!user || isGuest) {
       setSessionXp(0);
@@ -167,7 +184,7 @@ export default function TypingTest() {
     }
 
     setSessionSaving(true);
-    saveSession(wpm, accuracy).then(result => {
+    saveSession(finalScore, finalAccuracy).then(result => {
       if (result) {
         setSessionXp(result.xpEarned);
         setLeveledUp(result.leveledUp);
@@ -181,20 +198,22 @@ export default function TypingTest() {
   // ── Reset ───────────────────────────────────────────────────────────────────
   const reset = useCallback((newMode?: TimerMode) => {
     stopTimer();
+    if (feedbackRef.current) clearTimeout(feedbackRef.current);
     const m = newMode ?? mode;
     setPhase('idle');
-    setWords(generatePool());
-    setWordIdx(0);
-    setTypedChars('');
-    setWordResults([]);
+    setProblem(generateProblem());
+    setInputValue('');
+    correctRef.current = 0;
+    totalRef.current = 0;
+    setCorrectCountState(0);
+    setTotalCountState(0);
     setTimeLeft(m);
-    setScrollOffset(0);
-    setSessionWpm(0);
-    setSessionAccuracy(100);
+    setLastResult(null);
+    setSessionScore(0);
+    setSessionAccuracy(0);
     setSessionXp(0);
     setLeveledUp(false);
     setNewTitle(null);
-    wordRefs.current = [];
     requestAnimationFrame(() => inputRef.current?.focus());
   }, [stopTimer, mode]);
 
@@ -203,37 +222,41 @@ export default function TypingTest() {
     reset(m);
   };
 
-  // ── Keyboard handler ────────────────────────────────────────────────────────
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (phase === 'done') return;
-
-    if (e.key.length === 1 || e.key === 'Backspace' || e.key === ' ') {
-      e.preventDefault();
+  // ── Submit answer ───────────────────────────────────────────────────────────
+  const submitAnswer = useCallback(() => {
+    if (!inputValue.trim()) return;
+    const userAnswer = parseInt(inputValue, 10);
+    if (isNaN(userAnswer)) {
+      setInputValue('');
+      return;
     }
+
+    const isCorrect = userAnswer === problem.answer;
 
     if (phase === 'idle') {
-      if (e.key.length !== 1) return;
       setPhase('active');
       startTimer();
-      setTypedChars(e.key);
-      return;
     }
 
-    if (e.key === ' ') {
-      if (typedChars.length === 0) return;
-      setWordResults(prev => [...prev, { typed: typedChars, target: words[wordIdx] }]);
-      setWordIdx(prev => prev + 1);
-      setTypedChars('');
-      return;
-    }
+    totalRef.current += 1;
+    if (isCorrect) correctRef.current += 1;
+    setTotalCountState(totalRef.current);
+    setCorrectCountState(correctRef.current);
 
-    if (e.key === 'Backspace') {
-      setTypedChars(prev => prev.slice(0, -1));
-      return;
-    }
+    setLastResult(isCorrect ? 'correct' : 'incorrect');
+    if (feedbackRef.current) clearTimeout(feedbackRef.current);
+    feedbackRef.current = setTimeout(() => setLastResult(null), 400);
 
-    if (e.key.length === 1) {
-      setTypedChars(prev => prev + e.key);
+    setProblem(generateProblem());
+    setInputValue('');
+  }, [inputValue, problem.answer, phase, startTimer]);
+
+  // ── Key handler ─────────────────────────────────────────────────────────────
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (phase === 'done') return;
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      submitAnswer();
     }
   };
 
@@ -245,83 +268,23 @@ export default function TypingTest() {
     requestAnimationFrame(() => inputRef.current?.focus());
   };
 
-  // ── Word rendering ───────────────────────────────────────────────────────────
-  const renderWord = (word: string, wIdx: number) => {
-    const isPast = wIdx < wordIdx;
-    const isCurrent = wIdx === wordIdx;
-
-    const typed = isPast
-      ? (wordResults[wIdx]?.typed ?? '')
-      : isCurrent
-      ? typedChars
-      : '';
-
-    const charSpans: React.ReactNode[] = word.split('').map((char, cIdx) => {
-      const charTyped = typed[cIdx];
-      let cls = 'text-focused-dim';
-      if (charTyped !== undefined) {
-        cls = charTyped === char ? 'text-focused-correct' : 'text-focused-incorrect';
-      }
-      return <span key={cIdx} className={cls}>{char}</span>;
-    });
-
-    if (isCurrent && typedChars.length > word.length) {
-      typedChars.slice(word.length).split('').forEach((c, i) => {
-        charSpans.push(
-          <span key={`x${i}`} className="text-focused-incorrect">{c}</span>,
-        );
-      });
-    }
-
-    if (isCurrent && phase !== 'done') {
-      const caretPos = Math.min(typedChars.length, charSpans.length);
-      charSpans.splice(
-        caretPos,
-        0,
-        <span
-          key="caret"
-          className="inline-block w-0.5 h-[1.2em] bg-focused-caret animate-caret-blink align-[-0.15em] mx-px"
-          aria-hidden="true"
-        />,
-      );
-    }
-
-    const hasError = isPast && wordResults[wIdx]?.typed !== word;
-
-    return (
-      <span
-        key={wIdx}
-        ref={el => { wordRefs.current[wIdx] = el; }}
-        className={cn(
-          'inline-block mr-3 mb-2',
-          hasError && 'underline decoration-destructive underline-offset-2',
-        )}
-      >
-        {charSpans}
-      </span>
-    );
-  };
-
-  // ── Live WPM ────────────────────────────────────────────────────────────────
-  const elapsedSeconds = mode - timeLeft;
-  const liveWpm = elapsedSeconds > 0
-    ? Math.round((wordResults.filter(r => r.typed === r.target).length / elapsedSeconds) * 60)
-    : 0;
-
+  // ── Derived ─────────────────────────────────────────────────────────────────
   const mappedStatName = userStats.find(s => s.id === statMapping)?.stat_name ?? null;
   const xpSessionsLeft = Math.max(0, 3 - todaySessionCount);
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen page-bg flex flex-col select-none">
-
+    <div
+      className="min-h-screen page-bg flex flex-col select-none"
+      onClick={() => { if (phase !== 'done') inputRef.current?.focus(); }}
+    >
       {/* Stat picker dialog */}
       <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Link a stat to this game</DialogTitle>
             <DialogDescription>
-              Choose which stat earns XP from the Typing Test. This is set once and saved permanently.
+              Choose which stat earns XP from the Math Challenge. This is set once and saved permanently.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4 pt-2">
@@ -349,11 +312,7 @@ export default function TypingTest() {
         </DialogContent>
       </Dialog>
 
-      {/* Page content — anchored to top so mobile keyboard doesn't cover words */}
-      <div
-        className="flex-1 flex flex-col items-center px-4 sm:px-8 pt-10 sm:pt-14 pb-8 cursor-text"
-        onClick={() => { if (phase !== 'done') inputRef.current?.focus(); }}
-      >
+      <div className="flex-1 flex flex-col items-center px-4 sm:px-8 pt-10 sm:pt-14 pb-8">
         <div className="w-full max-w-[680px] flex flex-col gap-3">
 
           {/* Back nav */}
@@ -370,10 +329,10 @@ export default function TypingTest() {
           {/* Main card */}
           <div data-mode="focused" className="rounded-2xl border border-white/[0.07] bg-white/[0.02] overflow-hidden">
 
-            {/* Controls bar: mode pills | live wpm + timer + reset */}
+            {/* Controls bar */}
             <div className="flex items-center justify-between px-5 py-3 border-b border-white/[0.06]">
               <div className="flex items-center gap-1">
-                {TYPING_TIMER_OPTIONS.map(opt => (
+                {MATH_TIMER_OPTIONS.map(opt => (
                   <button
                     key={opt}
                     onClick={() => changeMode(opt as TimerMode)}
@@ -395,7 +354,7 @@ export default function TypingTest() {
               <div className="flex items-center gap-4">
                 {phase === 'active' && (
                   <span className="font-mono text-sm text-focused-dim tabular-nums">
-                    {liveWpm} <span className="text-xs opacity-60">wpm</span>
+                    {correctCount} <span className="text-xs opacity-60">correct</span>
                   </span>
                 )}
                 <span
@@ -412,7 +371,7 @@ export default function TypingTest() {
                   onClick={() => reset()}
                   onMouseDown={e => e.preventDefault()}
                   className="text-focused-dim hover:text-focused-correct transition-colors cursor-pointer"
-                  aria-label="Restart test"
+                  aria-label="Restart challenge"
                 >
                   <RotateCcw className="w-4 h-4" />
                 </button>
@@ -421,11 +380,11 @@ export default function TypingTest() {
 
             {/* Body */}
             {phase !== 'done' ? (
-              <div className="px-5 sm:px-7 pt-5 pb-6 flex flex-col gap-5">
+              <div className="px-5 sm:px-7 pt-6 pb-8 flex flex-col items-center gap-8">
 
                 {/* Stat / session info */}
                 {!!user && (
-                  <div className="flex items-center justify-between text-xs text-focused-dim font-mono">
+                  <div className="w-full flex items-center justify-between text-xs text-focused-dim font-mono">
                     <span>
                       {statMapping
                         ? <>stat <span className="text-focused-correct">{mappedStatName}</span></>
@@ -449,34 +408,55 @@ export default function TypingTest() {
                   </div>
                 )}
 
-                {/* Word display */}
-                <div className="overflow-hidden relative" style={{ height: '9rem' }}>
-                  <div
-                    ref={innerRef}
-                    className="font-mono text-2xl leading-[3rem]"
-                    style={{
-                      transform: `translateY(-${scrollOffset}px)`,
-                      transition: 'transform 80ms ease-out',
-                    }}
-                  >
-                    {words.map((word, i) => renderWord(word, i))}
-                  </div>
-                  <div className="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-focused-bg to-transparent pointer-events-none" />
+                {/* Problem display */}
+                <div className="text-center">
+                  <span className="font-mono text-5xl font-bold text-focused-correct tracking-wide">
+                    {problem.question}
+                  </span>
+                  <span className="font-mono text-5xl font-bold text-focused-dim ml-3">=</span>
                 </div>
 
-                {phase === 'idle' && (
-                  <p className="text-center text-focused-dim text-sm font-mono opacity-60">
-                    start typing to begin
-                  </p>
-                )}
+                {/* Answer input */}
+                <div className="flex flex-col items-center gap-2 w-full max-w-[180px]">
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    inputMode="numeric"
+                    value={inputValue}
+                    onChange={e => {
+                      if (phase === 'done') return;
+                      setInputValue(e.target.value.replace(/[^0-9]/g, ''));
+                    }}
+                    onKeyDown={handleKeyDown}
+                    onBlur={() => {
+                      if (phase === 'active') requestAnimationFrame(() => inputRef.current?.focus());
+                    }}
+                    className={cn(
+                      'w-full text-center font-mono text-3xl font-bold bg-transparent border-b-2 outline-none pb-1 transition-colors duration-150',
+                      lastResult === 'correct'
+                        ? 'border-focused-correct text-focused-correct'
+                        : lastResult === 'incorrect'
+                        ? 'border-focused-incorrect text-focused-incorrect'
+                        : 'border-focused-dim text-focused-correct focus:border-focused-caret',
+                    )}
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    aria-label="Your answer"
+                  />
+                  <span className="text-xs font-mono text-focused-dim">
+                    {phase === 'idle' ? 'enter answer to begin' : 'press enter to submit'}
+                  </span>
+                </div>
+
               </div>
             ) : (
               /* Results screen */
               <div className="px-5 sm:px-7 py-8 flex flex-col items-center gap-8">
                 <div className="grid grid-cols-3 gap-6 text-center">
                   <div>
-                    <p className="font-mono text-4xl font-bold text-focused-correct">{sessionWpm}</p>
-                    <p className="text-focused-dim text-xs font-mono mt-2">wpm</p>
+                    <p className="font-mono text-4xl font-bold text-focused-correct">{sessionScore}</p>
+                    <p className="text-focused-dim text-xs font-mono mt-2">correct</p>
                   </div>
                   <div>
                     <p className="font-mono text-4xl font-bold text-focused-correct">{sessionAccuracy}%</p>
@@ -522,6 +502,8 @@ export default function TypingTest() {
                       </button>{' '}
                       to earn xp next time.
                     </p>
+                  ) : sessionScore === 0 ? (
+                    <p className="opacity-50">no correct answers · no xp earned</p>
                   ) : null}
                 </div>
 
@@ -540,23 +522,12 @@ export default function TypingTest() {
                   >
                     games hub
                   </button>
-                  {!isGuest && (
-                    <>
-                      <span className="text-focused-dim">·</span>
-                      <button
-                        onClick={() => navigate('/games/typing/history')}
-                        className="text-focused-dim hover:text-focused-correct transition-colors cursor-pointer"
-                      >
-                        history
-                      </button>
-                    </>
-                  )}
                 </div>
               </div>
             )}
           </div>
 
-          {/* Mobile warning — shown below card, not blocking the word area */}
+          {/* Mobile warning */}
           {isMobile && (
             <div className="flex items-center gap-2 rounded-lg bg-yellow-500/[0.07] border border-yellow-500/20 px-4 py-2.5 text-yellow-400/70 text-xs">
               <AlertTriangle className="w-3 h-3 shrink-0" />
@@ -566,26 +537,6 @@ export default function TypingTest() {
 
         </div>
       </div>
-
-      {/* Hidden keyboard sink */}
-      <input
-        ref={inputRef}
-        value=""
-        onChange={() => {}}
-        onKeyDown={handleKeyDown}
-        onBlur={() => {
-          if (phase === 'active') {
-            requestAnimationFrame(() => inputRef.current?.focus());
-          }
-        }}
-        className="fixed -left-96 -top-96 opacity-0 w-px h-px"
-        aria-hidden="true"
-        tabIndex={-1}
-        autoComplete="off"
-        autoCorrect="off"
-        autoCapitalize="off"
-        spellCheck={false}
-      />
     </div>
   );
 }

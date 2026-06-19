@@ -35,7 +35,7 @@ export const GAMES: GameConfig[] = [
     description: 'Solve arithmetic problems under pressure.',
     icon: Calculator,
     route: '/games/math',
-    status: 'coming-soon',
+    status: 'live',
     defaultStatType: 'intelligence',
     xpFormula: (score, accuracy) =>
       Math.min(Math.floor((score / 10) * accuracy), XP_PER_SESSION_CAP),

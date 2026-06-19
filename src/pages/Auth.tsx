@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -59,6 +60,15 @@ const Auth = () => {
     <div className="min-h-screen page-bg flex items-center justify-center p-4">
 
       <div className="relative w-full max-w-sm space-y-8">
+        {/* Back to landing */}
+        <button
+          onClick={() => navigate('/landing')}
+          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          Back to home
+        </button>
+
         {/* Logo/Title */}
         <div className="text-center space-y-4">
           <div className="flex justify-center">

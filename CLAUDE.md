@@ -42,8 +42,10 @@ src/
     utils.ts           # cn() Tailwind merge helper
     titles.ts          # TITLE_TIERS array + getTitleForXp() + getStarCountForTitle()
   config/
-    constants.ts       # All magic numbers (XP caps, timer options, etc.) — planned
-    games.ts           # GameConfig registry — planned
+    constants.ts       # All magic numbers (XP caps, timer options, etc.)
+    games.ts           # GameConfig registry — hub reads this; adding a game never touches hub code
+  data/
+    wordList.ts        # ~200-word pool for the typing test
 supabase/
   migrations/          # SQL migrations, applied in order
 design-system/
@@ -56,16 +58,21 @@ design-system/
 
 | Path | Component | Guard |
 |---|---|---|
-| `/auth` | `Auth.tsx` | Redirects to `/` if already authed |
+| `/landing` | `Landing.tsx` | `AuthRoute` (redirects authed users to `/`) |
+| `/auth` | `Auth.tsx` | `AuthRoute` (redirects authed users to `/`) |
 | `/` | `Dashboard.tsx` | `ProtectedRoute` |
 | `/onboarding` | `Onboarding.tsx` | `ProtectedRoute` |
 | `/history` | `History.tsx` | `ProtectedRoute` |
 | `/settings` | `Settings.tsx` | `ProtectedRoute` |
-| `/games` | *(planned)* | `ProtectedRoute` |
-| `/games/typing` | *(planned)* | `ProtectedRoute` |
+| `/games` | `GamesHub.tsx` | None — public |
+| `/games/typing` | `TypingTest.tsx` | None — public |
+| `/games/typing/history` | `TypingHistory.tsx` | `ProtectedRoute` |
+| `/games/math` | `MathChallenge.tsx` | None — public |
 | `/error` | `Error.tsx` | None |
 
-`ProtectedRoute` redirects to `/auth` when there is no authenticated user and no active guest session. `AuthRoute` redirects authenticated users away from `/auth`.
+`ProtectedRoute` redirects to `/landing` when there is no authenticated user and no active guest session. `AuthRoute` redirects authenticated users away from `/auth` and `/landing`.
+
+**Public game routes** — `/games`, `/games/typing`, and `/games/math` require no auth. Unauthenticated visitors can play freely; XP is not saved unless they sign in. The results screen shows a "sign in" prompt for all unauthenticated states (guest or fully anonymous).
 
 ---
 
@@ -74,6 +81,7 @@ design-system/
 | Hook | Responsibility |
 |---|---|
 | `useUserData` | Loads profile + stats + habit logs; exposes `completeStat`, `canComplete`, level, XP progress. Branches on `isGuest` — guest data lives in `localStorage` under `habit-quest-guest-data`. |
+| `useGameSessions` | Per-game session logic: loads today's session count + stat mapping, exposes `saveSession` and `saveStatMapping`. Accepts optional `customXpFormula` to override the default WPM-based formula. Returns early (no-op saves) when `user` is null. |
 | `useLeaderboard` | Fetches top 20 profiles ordered by `total_xp`. |
 | `useHabitTracker` | Legacy localStorage-backed tracker (pre-Supabase). Not used in current pages. |
 | `use-mobile` | Returns boolean from `window.matchMedia('(max-width: 768px)')`. |
@@ -84,6 +92,7 @@ design-system/
 
 - **Authenticated users** — Supabase email/password. `AuthContext` sets `user` and `session` via `onAuthStateChange`. Signing up triggers the `handle_new_user` DB trigger which auto-inserts a `profiles` row.
 - **Guest mode** — `continueAsGuest()` writes `habit-quest-guest: 'true'` to `localStorage`. All data is read/written from `habit-quest-guest-data` in localStorage. Signing in clears the guest flag.
+- **Anonymous (public) access** — game routes (`/games`, `/games/typing`, `/games/math`) require no auth at all. Visitors can play without clicking "Continue as Guest". XP is not saved; results screen prompts sign-in.
 - Guest data is **not migrated** to a real account on sign-up (current limitation).
 
 ---
@@ -111,12 +120,12 @@ design-system/
 
 All tables have Row Level Security enabled. Policies restrict each user to their own rows.
 
-### Planned tables (not yet created)
+The `game_sessions` and `game_stat_mappings` tables are also live:
 
-| Table | Purpose |
+| Table | Key columns |
 |---|---|
-| `game_sessions` | `id, user_id, game_type, score_wpm, accuracy, xp_earned, completed_at` — one row per typing/minigame session |
-| `game_stat_mappings` | `user_id, game_type, stat_id` — which stat a user has linked to each game (one row per user per game, set once) |
+| `game_sessions` | `id, user_id, game_type, score_wpm, accuracy, xp_earned, completed_at` — one row per minigame session. `score_wpm` stores WPM for typing, correct-answer count for math. |
+| `game_stat_mappings` | `user_id, game_type, stat_id` — which stat a user has linked to each game. One row per user per game, set once, never changed. UNIQUE on `(user_id, game_type)`. |
 
 ---
 
