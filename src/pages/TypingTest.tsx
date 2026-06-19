@@ -110,17 +110,17 @@ export default function TypingTest() {
     }
   }, [sessionsLoading, statsLoading, isGuest, statMapping, userStats]);
 
-  // ── Sync timeLeft when mode changes while idle ───────────────────────────────
+  // ── Sync timeLeft when mode changes while idle ──────────────────────────────
   useEffect(() => {
     if (phase === 'idle') setTimeLeft(mode);
   }, [mode, phase]);
 
-  // ── Focus input when active ──────────────────────────────────────────────────
+  // ── Focus input when active ─────────────────────────────────────────────────
   useEffect(() => {
     if (phase === 'active') inputRef.current?.focus();
   }, [phase]);
 
-  // ── Scroll current word into view ────────────────────────────────────────────
+  // ── Scroll current word into view ───────────────────────────────────────────
   useEffect(() => {
     const el = wordRefs.current[wordIdx];
     if (!el || !innerRef.current) return;
@@ -153,7 +153,7 @@ export default function TypingTest() {
 
   useEffect(() => () => stopTimer(), [stopTimer]);
 
-  // ── Save session when done ───────────────────────────────────────────────────
+  // ── Save session when done ──────────────────────────────────────────────────
   useEffect(() => {
     if (phase !== 'done') return;
 
@@ -195,7 +195,6 @@ export default function TypingTest() {
     setLeveledUp(false);
     setNewTitle(null);
     wordRefs.current = [];
-    // Re-focus input after reset so typing can start immediately
     requestAnimationFrame(() => inputRef.current?.focus());
   }, [stopTimer, mode]);
 
@@ -204,7 +203,7 @@ export default function TypingTest() {
     reset(m);
   };
 
-  // ── Keyboard handler ─────────────────────────────────────────────────────────
+  // ── Keyboard handler ────────────────────────────────────────────────────────
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (phase === 'done') return;
 
@@ -238,7 +237,7 @@ export default function TypingTest() {
     }
   };
 
-  // ── Stat picker submit ────────────────────────────────────────────────────────
+  // ── Stat picker submit ───────────────────────────────────────────────────────
   const handlePickerSave = async () => {
     if (!selectedStatId) return;
     await saveStatMapping(selectedStatId);
@@ -246,7 +245,7 @@ export default function TypingTest() {
     requestAnimationFrame(() => inputRef.current?.focus());
   };
 
-  // ── Word rendering ────────────────────────────────────────────────────────────
+  // ── Word rendering ───────────────────────────────────────────────────────────
   const renderWord = (word: string, wIdx: number) => {
     const isPast = wIdx < wordIdx;
     const isCurrent = wIdx === wordIdx;
@@ -266,7 +265,6 @@ export default function TypingTest() {
       return <span key={cIdx} className={cls}>{char}</span>;
     });
 
-    // Extra chars typed beyond word length
     if (isCurrent && typedChars.length > word.length) {
       typedChars.slice(word.length).split('').forEach((c, i) => {
         charSpans.push(
@@ -275,7 +273,6 @@ export default function TypingTest() {
       });
     }
 
-    // Caret — visible in idle and active, hidden when done
     if (isCurrent && phase !== 'done') {
       const caretPos = Math.min(typedChars.length, charSpans.length);
       charSpans.splice(
@@ -305,17 +302,18 @@ export default function TypingTest() {
     );
   };
 
-  // ── Live WPM ─────────────────────────────────────────────────────────────────
+  // ── Live WPM ────────────────────────────────────────────────────────────────
   const elapsedSeconds = mode - timeLeft;
   const liveWpm = elapsedSeconds > 0
     ? Math.round((wordResults.filter(r => r.typed === r.target).length / elapsedSeconds) * 60)
     : 0;
 
   const mappedStatName = userStats.find(s => s.id === statMapping)?.stat_name ?? null;
+  const xpSessionsLeft = Math.max(0, 3 - todaySessionCount);
 
-  // ── Render ────────────────────────────────────────────────────────────────────
+  // ── Render ───────────────────────────────────────────────────────────────────
   return (
-    <div data-mode="focused" className="min-h-screen flex flex-col select-none">
+    <div className="min-h-screen page-bg flex flex-col select-none">
 
       {/* Stat picker dialog */}
       <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>
@@ -351,222 +349,231 @@ export default function TypingTest() {
         </DialogContent>
       </Dialog>
 
-      {/* Focused-mode header */}
-      <header className="flex items-center justify-between px-6 md:px-12 py-4 border-b border-white/5 shrink-0">
-        {/* Left: back + mode selector */}
-        <div className="flex items-center gap-4">
+      {/* Page content — anchored to top so mobile keyboard doesn't cover words */}
+      <div
+        className="flex-1 flex flex-col items-center px-4 sm:px-8 pt-10 sm:pt-14 pb-8 cursor-text"
+        onClick={() => { if (phase !== 'done') inputRef.current?.focus(); }}
+      >
+        <div className="w-full max-w-[680px] flex flex-col gap-3">
+
+          {/* Back nav */}
           <button
             onClick={() => navigate('/games')}
             onMouseDown={e => e.preventDefault()}
-            className="text-focused-dim hover:text-focused-correct transition-colors cursor-pointer"
+            className="self-start flex items-center gap-1.5 text-sm font-mono text-focused-dim hover:text-focused-correct transition-colors cursor-pointer"
             aria-label="Back to games"
           >
-            <ArrowLeft className="w-4 h-4" />
+            <ArrowLeft className="w-3.5 h-3.5" />
+            games
           </button>
 
-          <div className="flex items-center gap-1">
-            {TYPING_TIMER_OPTIONS.map(opt => (
-              <button
-                key={opt}
-                onClick={() => changeMode(opt as TimerMode)}
-                onMouseDown={e => e.preventDefault()}
-                className={cn(
-                  'font-mono text-sm px-3 py-1 rounded-md transition-colors cursor-pointer',
-                  mode === opt
-                    ? 'text-focused-caret bg-white/5'
-                    : 'text-focused-dim hover:text-focused-correct',
-                )}
-                aria-label={`${opt} second mode`}
-                aria-pressed={mode === opt}
-              >
-                {opt}s
-              </button>
-            ))}
-          </div>
-        </div>
+          {/* Main card */}
+          <div data-mode="focused" className="rounded-2xl border border-white/[0.07] bg-white/[0.02] overflow-hidden">
 
-        {/* Right: live WPM + timer + restart */}
-        <div className="flex items-center gap-5">
-          {phase === 'active' && (
-            <span className="font-mono text-sm text-focused-dim tabular-nums">
-              {liveWpm} <span className="text-xs opacity-60">wpm</span>
-            </span>
+            {/* Controls bar: mode pills | live wpm + timer + reset */}
+            <div className="flex items-center justify-between px-5 py-3 border-b border-white/[0.06]">
+              <div className="flex items-center gap-1">
+                {TYPING_TIMER_OPTIONS.map(opt => (
+                  <button
+                    key={opt}
+                    onClick={() => changeMode(opt as TimerMode)}
+                    onMouseDown={e => e.preventDefault()}
+                    className={cn(
+                      'font-mono text-sm px-3 py-1 rounded-md transition-colors cursor-pointer',
+                      mode === opt
+                        ? 'text-focused-caret bg-white/[0.08]'
+                        : 'text-focused-dim hover:text-focused-correct',
+                    )}
+                    aria-label={`${opt} second mode`}
+                    aria-pressed={mode === opt}
+                  >
+                    {opt}s
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-4">
+                {phase === 'active' && (
+                  <span className="font-mono text-sm text-focused-dim tabular-nums">
+                    {liveWpm} <span className="text-xs opacity-60">wpm</span>
+                  </span>
+                )}
+                <span
+                  className={cn(
+                    'font-mono text-2xl font-bold tabular-nums w-10 text-right',
+                    phase === 'active' && timeLeft <= 10
+                      ? 'text-focused-incorrect'
+                      : 'text-focused-caret',
+                  )}
+                >
+                  {timeLeft}
+                </span>
+                <button
+                  onClick={() => reset()}
+                  onMouseDown={e => e.preventDefault()}
+                  className="text-focused-dim hover:text-focused-correct transition-colors cursor-pointer"
+                  aria-label="Restart test"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Body */}
+            {phase !== 'done' ? (
+              <div className="px-5 sm:px-7 pt-5 pb-6 flex flex-col gap-5">
+
+                {/* Stat / session info */}
+                {!isGuest && (
+                  <div className="flex items-center justify-between text-xs text-focused-dim font-mono">
+                    <span>
+                      {statMapping
+                        ? <>stat <span className="text-focused-correct">{mappedStatName}</span></>
+                        : (
+                          <button
+                            className="underline underline-offset-2 hover:text-focused-correct transition-colors cursor-pointer"
+                            onMouseDown={e => e.preventDefault()}
+                            onClick={e => { e.stopPropagation(); setPickerOpen(true); }}
+                          >
+                            link a stat to earn XP
+                          </button>
+                        )
+                      }
+                    </span>
+                    <span>
+                      {canEarnXp
+                        ? (xpSessionsLeft > 0 ? `${xpSessionsLeft} xp session${xpSessionsLeft !== 1 ? 's' : ''} left` : '')
+                        : <span className="opacity-50">free play · no xp</span>
+                      }
+                    </span>
+                  </div>
+                )}
+
+                {/* Word display */}
+                <div className="overflow-hidden relative" style={{ height: '9rem' }}>
+                  <div
+                    ref={innerRef}
+                    className="font-mono text-2xl leading-[3rem]"
+                    style={{
+                      transform: `translateY(-${scrollOffset}px)`,
+                      transition: 'transform 80ms ease-out',
+                    }}
+                  >
+                    {words.map((word, i) => renderWord(word, i))}
+                  </div>
+                  <div className="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-focused-bg to-transparent pointer-events-none" />
+                </div>
+
+                {phase === 'idle' && (
+                  <p className="text-center text-focused-dim text-sm font-mono opacity-60">
+                    start typing to begin
+                  </p>
+                )}
+              </div>
+            ) : (
+              /* Results screen */
+              <div className="px-5 sm:px-7 py-8 flex flex-col items-center gap-8">
+                <div className="grid grid-cols-3 gap-6 text-center">
+                  <div>
+                    <p className="font-mono text-4xl font-bold text-focused-correct">{sessionWpm}</p>
+                    <p className="text-focused-dim text-xs font-mono mt-2">wpm</p>
+                  </div>
+                  <div>
+                    <p className="font-mono text-4xl font-bold text-focused-correct">{sessionAccuracy}%</p>
+                    <p className="text-focused-dim text-xs font-mono mt-2">acc</p>
+                  </div>
+                  <div>
+                    <p className={cn(
+                      'font-mono text-4xl font-bold',
+                      sessionXp > 0 ? 'text-focused-caret' : 'text-focused-dim',
+                    )}>
+                      {sessionSaving ? '…' : `+${sessionXp}`}
+                    </p>
+                    <p className="text-focused-dim text-xs font-mono mt-2">xp</p>
+                  </div>
+                </div>
+
+                <div className="text-center text-xs font-mono text-focused-dim space-y-1.5">
+                  {isGuest ? (
+                    <p>
+                      <button
+                        className="underline underline-offset-2 hover:text-focused-correct transition-colors cursor-pointer"
+                        onClick={() => navigate('/auth')}
+                      >
+                        sign in
+                      </button>{' '}
+                      to earn XP and track your sessions.
+                    </p>
+                  ) : sessionXp > 0 ? (
+                    <>
+                      <p>xp → <span className="text-focused-correct">{mappedStatName}</span></p>
+                      {leveledUp && <p className="text-focused-caret">level up!</p>}
+                      {newTitle && <p className="text-focused-caret">new title: {newTitle}</p>}
+                    </>
+                  ) : !canEarnXp ? (
+                    <p className="opacity-50">free play · no xp (3/3 sessions used today)</p>
+                  ) : !statMapping ? (
+                    <p>
+                      <button
+                        className="underline underline-offset-2 hover:text-focused-correct transition-colors cursor-pointer"
+                        onClick={() => setPickerOpen(true)}
+                      >
+                        link a stat
+                      </button>{' '}
+                      to earn xp next time.
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="flex gap-4 justify-center font-mono text-sm">
+                  <button
+                    onClick={() => reset()}
+                    className="flex items-center gap-1.5 text-focused-dim hover:text-focused-correct transition-colors cursor-pointer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    retry
+                  </button>
+                  <span className="text-focused-dim">·</span>
+                  <button
+                    onClick={() => navigate('/games')}
+                    className="text-focused-dim hover:text-focused-correct transition-colors cursor-pointer"
+                  >
+                    games hub
+                  </button>
+                  {!isGuest && (
+                    <>
+                      <span className="text-focused-dim">·</span>
+                      <button
+                        onClick={() => navigate('/games/typing/history')}
+                        className="text-focused-dim hover:text-focused-correct transition-colors cursor-pointer"
+                      >
+                        history
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Mobile warning — shown below card, not blocking the word area */}
+          {isMobile && (
+            <div className="flex items-center gap-2 rounded-lg bg-yellow-500/[0.07] border border-yellow-500/20 px-4 py-2.5 text-yellow-400/70 text-xs">
+              <AlertTriangle className="w-3 h-3 shrink-0" />
+              Best on desktop with a physical keyboard.
+            </div>
           )}
 
-          <span
-            className={cn(
-              'font-mono text-xl font-semibold tabular-nums w-8 text-right',
-              phase === 'active' && timeLeft <= 10
-                ? 'text-focused-incorrect'
-                : 'text-focused-caret',
-            )}
-          >
-            {timeLeft}
-          </span>
-
-          <button
-            onClick={() => reset()}
-            onMouseDown={e => e.preventDefault()}
-            className="text-focused-dim hover:text-focused-correct transition-colors cursor-pointer"
-            aria-label="Restart test"
-          >
-            <RotateCcw className="w-4 h-4" />
-          </button>
         </div>
-      </header>
-
-      {/* Mobile warning */}
-      {isMobile && (
-        <div className="flex items-center gap-2 px-6 py-2 bg-yellow-500/10 border-b border-yellow-500/20 text-yellow-400 text-xs shrink-0">
-          <AlertTriangle className="w-3 h-3 shrink-0" />
-          <span>Best on desktop with a physical keyboard.</span>
-        </div>
-      )}
-
-      {/* Main content area */}
-      <div
-        className="flex-1 flex flex-col items-center justify-center px-6 md:px-12 py-12 cursor-text"
-        onClick={() => { if (phase !== 'done') inputRef.current?.focus(); }}
-      >
-        {phase !== 'done' ? (
-          <div className="w-full max-w-[720px] flex flex-col gap-8">
-
-            {/* Stat / session info */}
-            {!isGuest && (
-              <div className="flex items-center justify-between text-xs text-focused-dim font-mono">
-                <span>
-                  {statMapping
-                    ? <>stat <span className="text-focused-correct">{mappedStatName}</span></>
-                    : <button
-                        className="underline underline-offset-2 hover:text-focused-correct transition-colors cursor-pointer"
-                        onMouseDown={e => e.preventDefault()}
-                        onClick={e => { e.stopPropagation(); setPickerOpen(true); }}
-                      >
-                        link a stat to earn XP
-                      </button>
-                  }
-                </span>
-                <span>
-                  {canEarnXp
-                    ? <>{TYPING_TIMER_OPTIONS.length - todaySessionCount < 1 ? '' : `${3 - todaySessionCount} xp session${3 - todaySessionCount !== 1 ? 's' : ''} left`}</>
-                    : <span className="text-focused-incorrect">xp cap reached today</span>
-                  }
-                </span>
-              </div>
-            )}
-
-            {/* Word display */}
-            <div
-              className="overflow-hidden relative"
-              style={{ height: '9rem' }}
-            >
-              <div
-                ref={innerRef}
-                className="font-mono text-2xl leading-[3rem]"
-                style={{
-                  transform: `translateY(-${scrollOffset}px)`,
-                  transition: 'transform 80ms ease-out',
-                }}
-              >
-                {words.map((word, i) => renderWord(word, i))}
-              </div>
-              {/* Bottom fade */}
-              <div className="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-focused-bg to-transparent pointer-events-none" />
-            </div>
-
-            {/* Idle hint */}
-            {phase === 'idle' && (
-              <p className="text-center text-focused-dim text-sm font-mono opacity-60">
-                start typing to begin
-              </p>
-            )}
-          </div>
-        ) : (
-          /* Results screen */
-          <div className="w-full max-w-sm flex flex-col gap-8">
-            {/* Metrics */}
-            <div className="grid grid-cols-3 gap-6 text-center">
-              <div>
-                <p className="font-mono text-4xl font-bold text-focused-correct">{sessionWpm}</p>
-                <p className="text-focused-dim text-xs font-mono mt-2">wpm</p>
-              </div>
-              <div>
-                <p className="font-mono text-4xl font-bold text-focused-correct">{sessionAccuracy}%</p>
-                <p className="text-focused-dim text-xs font-mono mt-2">acc</p>
-              </div>
-              <div>
-                <p className={cn(
-                  'font-mono text-4xl font-bold',
-                  sessionXp > 0 ? 'text-focused-caret' : 'text-focused-dim',
-                )}>
-                  {sessionSaving ? '…' : `+${sessionXp}`}
-                </p>
-                <p className="text-focused-dim text-xs font-mono mt-2">xp</p>
-              </div>
-            </div>
-
-            {/* Context line */}
-            <div className="text-center text-xs font-mono text-focused-dim space-y-1.5">
-              {isGuest ? (
-                <p>
-                  <button
-                    className="underline underline-offset-2 hover:text-focused-correct transition-colors cursor-pointer"
-                    onClick={() => navigate('/auth')}
-                  >
-                    sign in
-                  </button>{' '}
-                  to earn XP and track your sessions.
-                </p>
-              ) : sessionXp > 0 ? (
-                <>
-                  <p>xp → <span className="text-focused-correct">{mappedStatName}</span></p>
-                  {leveledUp && <p className="text-focused-caret">level up!</p>}
-                  {newTitle && <p className="text-focused-caret">new title: {newTitle}</p>}
-                </>
-              ) : !canEarnXp ? (
-                <p className="text-focused-incorrect">xp cap reached (3/3 sessions today)</p>
-              ) : !statMapping ? (
-                <p>
-                  <button
-                    className="underline underline-offset-2 hover:text-focused-correct transition-colors cursor-pointer"
-                    onClick={() => setPickerOpen(true)}
-                  >
-                    link a stat
-                  </button>{' '}
-                  to earn xp next time.
-                </p>
-              ) : null}
-            </div>
-
-            {/* Action row */}
-            <div className="flex gap-4 justify-center font-mono text-sm">
-              <button
-                onClick={() => reset()}
-                className="flex items-center gap-1.5 text-focused-dim hover:text-focused-correct transition-colors cursor-pointer"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                retry
-              </button>
-              <span className="text-focused-dim">·</span>
-              <button
-                onClick={() => navigate('/games')}
-                className="text-focused-dim hover:text-focused-correct transition-colors cursor-pointer"
-              >
-                games hub
-              </button>
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* Hidden keyboard sink — positioned off-screen, not pointer-events:none */}
+      {/* Hidden keyboard sink */}
       <input
         ref={inputRef}
         value=""
         onChange={() => {}}
         onKeyDown={handleKeyDown}
         onBlur={() => {
-          // Re-capture focus during active play so buttons don't break typing
           if (phase === 'active') {
             requestAnimationFrame(() => inputRef.current?.focus());
           }

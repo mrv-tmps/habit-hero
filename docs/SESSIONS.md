@@ -4,7 +4,47 @@ Chronological log of dev sessions. Latest on top.
 
 ---
 
-## Session 3 — 2026-06-18
+## Session 4 — 2026-06-19
+**Goal:** Phase 3 — Typing test session history / personal bests screen
+
+### Work done
+- `src/hooks/useTypingHistory.ts`: fetches up to 100 `game_sessions` rows (game_type=typing), computes bestWpm, bestAccuracy, totalXp
+- `src/pages/TypingHistory.tsx`: route `/games/typing/history` — 4 personal best cards (Best WPM, Best Acc, Sessions, Total XP) + session log table with date/WPM/acc/XP columns; personal best WPM row gets gold `pb` tag; empty state + guest sign-in prompt
+- `src/App.tsx`: added `/games/typing/history` route under `ProtectedRoute`
+- `src/pages/TypingTest.tsx`: added "history" link in results action row (hidden for guests)
+
+### Key decisions
+- History page uses RPG chrome (page-bg, card borders) not focused mode — it's a stats screen, not active gameplay
+- "pb" tag marks the personal best WPM row inline rather than a separate highlight card
+- "history" link only shown for authenticated users on the results screen
+
+---
+
+## Session 5 — 2026-06-19
+**Goal:** Typing test UI polish — layout restructure, mobile keyboard fix, page background
+
+### Work done
+- Removed separate `<header>` from TypingTest; mode selector (30s/60s), countdown timer, and reset button moved into a unified controls bar at the top of a card
+- Word display now sits inside a card (`rounded-2xl border border-white/[0.07] bg-white/[0.02]`) for visual depth
+- Content anchored to top (`pt-10 sm:pt-14`) instead of `justify-center` — fixes mobile keyboard covering the word area
+- Mobile warning moved below the card (no longer blocks the word area)
+- Outer wrapper changed from `data-mode="focused"` to `page-bg` — dot grid and ambient glows now show behind the card, consistent with all other pages
+- `data-mode="focused"` scoped to the card only so focused color palette still applies to the word area
+- "xp cap reached" message changed from `text-focused-incorrect` (red) to muted `opacity-50` — communicates free play continues, not an error
+- Unlimited free play confirmed already working: sessions beyond daily cap save with `xp_earned: 0`, game is never blocked
+
+### Key decisions
+- `page-bg` on outer wrapper + `data-mode="focused"` on card = background decorations show around the card without cluttering the typing surface
+- Anchoring to top (not centering) is the correct fix for mobile keyboard coverage
+
+### Next up (Phase 3 candidates)
+- Math/Arithmetic Challenge (route stub exists as coming-soon in GAMES registry)
+- Streak badges
+- Advanced analytics on History page
+
+---
+
+## Session 4 — 2026-06-19
 **Goal:** UI consistency pass — gamified backgrounds + design polish before Phase 3 (game loop expansion)
 
 ### Work done

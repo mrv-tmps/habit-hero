@@ -12,6 +12,7 @@ import History from "./pages/History";
 import Settings from "./pages/Settings";
 import GamesHub from "./pages/GamesHub";
 import TypingTest from "./pages/TypingTest";
+import TypingHistory from "./pages/TypingHistory";
 import ErrorPage from "./pages/Error";
 
 const queryClient = new QueryClient();
@@ -63,6 +64,7 @@ function AppRoutes() {
       <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
       <Route path="/games" element={<ProtectedRoute><GamesHub /></ProtectedRoute>} />
       <Route path="/games/typing" element={<ProtectedRoute><TypingTest /></ProtectedRoute>} />
+      <Route path="/games/typing/history" element={<ProtectedRoute><TypingHistory /></ProtectedRoute>} />
       <Route path="/error" element={<ErrorPage />} />
       <Route path="*" element={<ErrorPage />} />
     </Routes>
