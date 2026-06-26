@@ -18,6 +18,7 @@ import ErrorPage from "./pages/Error";
 import CreateRoom from "./pages/CreateRoom";
 import RoomLobby from "./pages/RoomLobby";
 import MultiplayerGame from "./pages/MultiplayerGame";
+import CoinRush from "./pages/CoinRush";
 
 const queryClient = new QueryClient();
 
@@ -70,6 +71,7 @@ function AppRoutes() {
       <Route path="/games/typing" element={<TypingTest />} />
       <Route path="/games/typing/history" element={<ProtectedRoute><TypingHistory /></ProtectedRoute>} />
       <Route path="/games/math" element={<MathChallenge />} />
+      <Route path="/games/coin-rush" element={<CoinRush />} />
       <Route path="/games/room/new" element={<CreateRoom />} />
       <Route path="/games/room/:code" element={<RoomLobby />} />
       <Route path="/games/room/:code/play" element={<MultiplayerGame />} />

@@ -75,6 +75,16 @@
     --player-6: 30 85% 55%;
     --player-7: 180 60% 45%;
     --player-8: 300 55% 55%;
+
+    /* Coin Rush arena tokens */
+    --arena-floor:  240 14% 7%;
+    --arena-wall:   240 10% 25%;
+    --arena-grid:   240 10% 12%;
+    --coin:         45 90% 55%;
+    --coin-edge:    45 70% 40%;
+    --gem:          270 70% 62%;
+    --hazard:       0 75% 55%;
+    --stun-flash:   0 75% 55%;
   }
 }
 
@@ -137,10 +147,6 @@
     animation: level-up 0.5s ease-out;
   }
 
-  .animate-point-added {
-    animation: point-added 0.6s ease-out forwards;
-  }
-
   @keyframes caret-blink {
     0%, 100% { opacity: 1; }
     50% { opacity: 0; }
@@ -190,6 +196,60 @@
     text-shadow: none;
   }
 
+  /* Arcade mode — Coin Rush solo + multiplayer arena */
+  [data-mode="arcade"] {
+    background: hsl(var(--focused-bg));
+    overscroll-behavior: contain;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+  [data-mode="arcade"] header,
+  [data-mode="arcade"] nav {
+    display: none;
+  }
+  [data-mode="arcade"] .card-glow,
+  [data-mode="arcade"] .stat-glow-strength,
+  [data-mode="arcade"] .stat-glow-intelligence,
+  [data-mode="arcade"] .stat-glow-endurance {
+    box-shadow: none;
+    text-shadow: none;
+  }
+
+  /* Coin Rush keyframes */
+  @keyframes coin-pop {
+    0%   { transform: scale(1);   opacity: 1; }
+    100% { transform: scale(1.8); opacity: 0; }
+  }
+
+  @keyframes gem-pulse {
+    0%, 100% { transform: scale(1) rotate(45deg);    }
+    50%      { transform: scale(1.12) rotate(45deg); }
+  }
+
+  @keyframes stun-shake {
+    0%, 100% { transform: translateX(0); }
+    25%      { transform: translateX(-2px); }
+    75%      { transform: translateX(2px); }
+  }
+
+  @keyframes countdown-pop {
+    0%   { transform: scale(0.6); opacity: 0; }
+    40%  { transform: scale(1);   opacity: 1; }
+    100% { transform: scale(1.4); opacity: 0; }
+  }
+
+  @keyframes point-added {
+    0%   { transform: translateY(0);     opacity: 1; }
+    100% { transform: translateY(-18px); opacity: 0; }
+  }
+
+  .animate-coin-pop      { animation: coin-pop 300ms ease-out forwards; }
+  .animate-gem-pulse     { animation: gem-pulse 1.2s ease-in-out infinite; }
+  .animate-stun-shake    { animation: stun-shake 200ms ease-in-out infinite; }
+  .animate-countdown-pop { animation: countdown-pop 900ms ease-out forwards; }
+  .animate-point-added   { animation: point-added 600ms ease-out forwards; }
+
   @keyframes fade-in {
     from { opacity: 0; transform: translateY(4px); }
     to   { opacity: 1; transform: translateY(0); }
@@ -228,7 +288,13 @@
     .animate-level-up,
     .animate-caret-blink,
     .animate-char-error,
-    .animate-fade-in {
+    .animate-fade-in,
+    /* Coin Rush cosmetic flourishes only — gameplay motion (avatars, saws) is NOT suppressed */
+    .animate-coin-pop,
+    .animate-gem-pulse,
+    .animate-stun-shake,
+    .animate-countdown-pop,
+    .animate-point-added {
       animation: none;
     }
   }

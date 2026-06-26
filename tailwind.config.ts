@@ -123,6 +123,25 @@ export default {
           from: { opacity: "0", transform: "translateY(4px)" },
           to: { opacity: "1", transform: "translateY(0)" },
         },
+        // Coin Rush
+        "coin-pop": {
+          "0%":   { transform: "scale(1)",   opacity: "1" },
+          "100%": { transform: "scale(1.8)", opacity: "0" },
+        },
+        "gem-pulse": {
+          "0%, 100%": { transform: "scale(1) rotate(45deg)" },
+          "50%":      { transform: "scale(1.12) rotate(45deg)" },
+        },
+        "stun-shake": {
+          "0%, 100%": { transform: "translateX(0)" },
+          "25%":      { transform: "translateX(-2px)" },
+          "75%":      { transform: "translateX(2px)" },
+        },
+        "countdown-pop": {
+          "0%":   { transform: "scale(0.6)", opacity: "0" },
+          "40%":  { transform: "scale(1)",   opacity: "1" },
+          "100%": { transform: "scale(1.4)", opacity: "0" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -131,6 +150,11 @@ export default {
         "caret-blink": "caret-blink 1s ease-in-out infinite",
         "char-error": "char-error 0.2s ease-in-out",
         "fade-in": "fade-in 150ms ease-out",
+        // Coin Rush
+        "coin-pop": "coin-pop 300ms ease-out forwards",
+        "gem-pulse": "gem-pulse 1.2s ease-in-out infinite",
+        "stun-shake": "stun-shake 200ms ease-in-out infinite",
+        "countdown-pop": "countdown-pop 900ms ease-out forwards",
       },
     },
   },

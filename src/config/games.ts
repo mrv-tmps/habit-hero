@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
-import { Keyboard, Calculator } from 'lucide-react';
+import { Keyboard, Calculator, Coins } from 'lucide-react';
 import { XP_PER_SESSION_CAP, DAILY_SESSION_CAP } from './constants';
 import type { GameType } from '@/types/multiplayer';
 
@@ -48,5 +48,19 @@ export const GAMES: GameConfig[] = [
     xpCapPerSession: XP_PER_SESSION_CAP,
     multiplayerRoute: '/games/math/multiplayer',
     multiplayerGameType: 'math-buzzer',
+  },
+  {
+    id: 'coin-rush',
+    label: 'Coin Rush',
+    description: 'Grab the most coins before the clock runs out. Dodge the saw blades!',
+    icon: Coins,
+    route: '/games/coin-rush',
+    status: 'live',
+    defaultStatType: 'dexterity',
+    xpFormula: (score) => Math.min(Math.floor(score / 10), XP_PER_SESSION_CAP),
+    sessionCapPerDay: DAILY_SESSION_CAP,
+    xpCapPerSession: XP_PER_SESSION_CAP,
+    multiplayerRoute: '/games/room/new?game=coin-rush',
+    multiplayerGameType: 'coin-rush',
   },
 ];

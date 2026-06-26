@@ -1,5 +1,5 @@
 export type RoomStatus = 'waiting' | 'active' | 'finished';
-export type GameType = 'math-buzzer' | 'typing-race';
+export type GameType = 'math-buzzer' | 'typing-race' | 'coin-rush';
 export type MathDifficulty = 'easy' | 'medium' | 'hard';
 export type TypingMode = 'english' | 'code';
 export type CodeLanguage = 'javascript' | 'python' | 'c';
