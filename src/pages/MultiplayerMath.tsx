@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Trophy, Medal, Award, MonitorSmartphone, X, Check, Loader2 } from 'lucide-react';
+import { Trophy, Medal, Award, MonitorSmartphone, X, Check, Loader2, Delete } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useMultiplayerMath } from '@/hooks/useMultiplayerMath';
 import { useAuth } from '@/contexts/AuthContext';
@@ -258,7 +258,7 @@ function BuzzerOverlay({ nickname, question, answer, onDone }: BuzzerOverlayProp
   }, []); // intentionally empty — must only fire once per mount
 
   return (
-    <div className="fixed inset-0 z-30 flex items-center justify-center bg-background/70 backdrop-blur-sm">
+    <div className="fixed inset-0 z-30 flex items-center justify-center bg-background/85 backdrop-blur-md">
       <div className="animate-fade-in bg-card border-2 border-primary rounded-2xl px-10 py-8 text-center shadow-2xl flex flex-col gap-3 min-w-[280px]">
         <p className="font-pixel text-xs text-primary animate-pulse-glow tracking-widest">
           CORRECT!
@@ -296,13 +296,56 @@ function CountdownOverlay({ onDone }: { onDone: () => void }) {
   }, []); // intentionally empty
 
   return (
-    <div className="fixed inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-background/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-background/85 backdrop-blur-md">
       <p className="font-mono text-xs text-muted-foreground tracking-widest uppercase">
         Next question in
       </p>
       <p className="font-pixel text-8xl text-primary animate-pulse-glow leading-none">
         {count}
       </p>
+    </div>
+  );
+}
+
+// ─── Mobile numeric keypad ────────────────────────────────────────────────────
+// Renders an in-app keypad so input is identical across Android and iOS. iOS
+// Safari never opens the native keyboard from a programmatic focus and its
+// numeric keypad has no Enter key, which made the buzzer race unfair on iPhones.
+
+interface NumericKeypadProps {
+  onDigit: (d: string) => void;
+  onBackspace: () => void;
+  onToggleSign: () => void;
+  onSubmit: () => void;
+  disabled: boolean;
+}
+
+function NumericKeypad({ onDigit, onBackspace, onToggleSign, onSubmit, disabled }: NumericKeypadProps) {
+  const keyCls =
+    'h-14 rounded-md bg-secondary text-foreground font-mono text-2xl flex items-center justify-center ' +
+    'select-none touch-manipulation cursor-pointer active:bg-secondary/60 disabled:opacity-40';
+
+  return (
+    <div className="w-full max-w-[280px] flex flex-col gap-2">
+      <div className="grid grid-cols-3 gap-2">
+        {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map(d => (
+          <button key={d} type="button" disabled={disabled} onClick={() => onDigit(d)} className={keyCls}>
+            {d}
+          </button>
+        ))}
+        <button type="button" disabled={disabled} onClick={onToggleSign} className={keyCls} aria-label="Toggle negative sign">
+          ±
+        </button>
+        <button type="button" disabled={disabled} onClick={() => onDigit('0')} className={keyCls}>
+          0
+        </button>
+        <button type="button" disabled={disabled} onClick={onBackspace} className={keyCls} aria-label="Backspace">
+          <Delete className="w-6 h-6" />
+        </button>
+      </div>
+      <Button size="lg" onClick={onSubmit} disabled={disabled} className="h-14 text-lg cursor-pointer">
+        Submit
+      </Button>
     </div>
   );
 }
@@ -395,6 +438,20 @@ export default function MultiplayerMath({ room }: { room: MultiplayerRoom }) {
       e.preventDefault();
       handleSubmit();
     }
+  }
+
+  // Mobile keypad handlers — drive the same inputValue used by handleSubmit.
+  function handleDigit(d: string) {
+    if (waitingForAdvance) return;
+    setInputValue(v => (v.replace('-', '').length >= 6 ? v : v + d));
+  }
+  function handleBackspace() {
+    if (waitingForAdvance) return;
+    setInputValue(v => v.slice(0, -1));
+  }
+  function handleToggleSign() {
+    if (waitingForAdvance) return;
+    setInputValue(v => (v.startsWith('-') ? v.slice(1) : '-' + v));
   }
 
   // ── Ready phase ──────────────────────────────────────────────────────────────
@@ -492,7 +549,14 @@ export default function MultiplayerMath({ room }: { room: MultiplayerRoom }) {
 
       {/* Main question area */}
       <div className="flex-1 flex flex-col items-center justify-center gap-6 px-4 py-8">
-        {currentQuestion ? (
+        {!currentQuestion ? (
+          <p className="text-muted-foreground font-sans text-sm">Loading…</p>
+        ) : waitingForAdvance ? (
+          // Hide the live question while the buzzer/countdown overlays are up —
+          // currentQuestionIdx has already advanced, so rendering it here would
+          // leak the next problem through the blur.
+          <p className="text-muted-foreground font-sans text-sm">Get ready…</p>
+        ) : (
           <>
             <p
               className={cn(
@@ -505,36 +569,62 @@ export default function MultiplayerMath({ room }: { room: MultiplayerRoom }) {
               {currentQuestion.question} = ?
             </p>
 
-            <div
-              key={shakeKey}
-              className={cn(shakeKey > 0 && 'animate-char-error')}
-            >
-              <input
-                ref={inputRef}
-                type="number"
-                inputMode="numeric"
-                value={inputValue}
-                onChange={e => setInputValue(e.target.value)}
-                onKeyDown={handleKeyDown}
-                disabled={waitingForAdvance}
-                placeholder="?"
-                className={cn(
-                  'font-mono text-2xl text-center max-w-[200px] w-full',
-                  'bg-input border border-border rounded-md px-4 py-2',
-                  'focus:outline-none focus:ring-1 focus:ring-ring',
-                  'disabled:opacity-50',
-                  '[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none',
-                )}
-                autoFocus
-              />
-            </div>
+            {isMobile ? (
+              <>
+                <div
+                  key={shakeKey}
+                  className={cn(
+                    'font-mono text-2xl text-center w-full max-w-[200px] min-h-[3rem]',
+                    'bg-input border rounded-md px-4 py-2 flex items-center justify-center',
+                    correctFlash
+                      ? 'border-[hsl(var(--focused-text-correct))]'
+                      : 'border-border',
+                    shakeKey > 0 && 'animate-char-error',
+                  )}
+                >
+                  {inputValue || <span className="text-muted-foreground">?</span>}
+                </div>
 
-            <p className="text-muted-foreground text-xs font-sans">
-              Press Enter to submit
-            </p>
+                <NumericKeypad
+                  onDigit={handleDigit}
+                  onBackspace={handleBackspace}
+                  onToggleSign={handleToggleSign}
+                  onSubmit={handleSubmit}
+                  disabled={waitingForAdvance}
+                />
+              </>
+            ) : (
+              <>
+                <div
+                  key={shakeKey}
+                  className={cn(shakeKey > 0 && 'animate-char-error')}
+                >
+                  <input
+                    ref={inputRef}
+                    type="number"
+                    inputMode="numeric"
+                    value={inputValue}
+                    onChange={e => setInputValue(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    disabled={waitingForAdvance}
+                    placeholder="?"
+                    className={cn(
+                      'font-mono text-2xl text-center max-w-[200px] w-full',
+                      'bg-input border border-border rounded-md px-4 py-2',
+                      'focus:outline-none focus:ring-1 focus:ring-ring',
+                      'disabled:opacity-50',
+                      '[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none',
+                    )}
+                    autoFocus
+                  />
+                </div>
+
+                <p className="text-muted-foreground text-xs font-sans">
+                  Press Enter to submit
+                </p>
+              </>
+            )}
           </>
-        ) : (
-          <p className="text-muted-foreground font-sans text-sm">Loading…</p>
         )}
       </div>
 
