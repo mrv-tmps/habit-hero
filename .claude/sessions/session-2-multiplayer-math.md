@@ -150,11 +150,19 @@ Replace the stub. This component:
 
 ## Definition of done
 
-- [ ] Two players in the same room both see the same question simultaneously
-- [ ] First correct answer claims the point; both players see the scoreboard update and question advance
-- [ ] Wrong answer shakes the input and allows retry
-- [ ] All questions exhausted → results screen shows rankings with XP multipliers
-- [ ] Time limit mode ends the game at 0s → results screen
-- [ ] Authenticated users have XP saved to `game_sessions`; guests show score only
-- [ ] `font-pixel` not used for nicknames (only score numbers and result title)
-- [ ] No TypeScript errors
+- [x] Two players in the same room both see the same question simultaneously
+- [x] First correct answer claims the point; both players see the scoreboard update and question advance
+- [x] Wrong answer shakes the input and allows retry
+- [x] All questions exhausted → results screen shows rankings with XP multipliers
+- [x] Time limit mode ends the game at 0s → results screen
+- [x] Authenticated users have XP saved to `game_sessions`; guests show score only
+- [x] `font-pixel` not used for nicknames (only score numbers and result title)
+- [x] No TypeScript errors
+
+## Delivered beyond spec
+
+- **Ready phase** — before questions start, all players see a "I'm Ready!" screen with a live list of who has readied up. Host broadcasts `game_begin` once everyone is ready; game is gated until that point.
+- **Buzzer overlay** — 1.5 s overlay showing the claimer's name and the correct answer, then transitions to a 3–2–1 countdown before the next question appears. Timer is anchored to mount via `useRef` (not `[onDone]` deps) so re-renders can't reset it.
+- **Big loading screen** — full-page `Zap` icon + spinner while `MultiplayerGame.tsx` fetches the room, replacing the previous tiny spinner.
+- **Stable hook refs** — `useMultiplayerRoom` wraps all returned functions in `useCallback([])`. Without this, functions in `useEffect` deps caused an infinite re-fetch loop that eventually hit a transient error and navigated players back to `/games` mid-game.
+- New realtime events: `player_ready` and `game_begin` added to `MultiplayerEvent`.

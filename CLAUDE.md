@@ -88,9 +88,9 @@ design-system/
 | `useLeaderboard` | Fetches top 20 profiles ordered by `total_xp`. |
 | `useHabitTracker` | Legacy localStorage-backed tracker (pre-Supabase). Not used in current pages. |
 | `use-mobile` | Returns boolean from `window.matchMedia('(max-width: 768px)')`. |
-| `useMultiplayerRoom` | Creates/joins/leaves rooms; host promotion; finalizes results and writes XP to `multiplayer_participants` + `game_sessions`. |
+| `useMultiplayerRoom` | Creates/joins/leaves rooms; host promotion; finalizes results and writes XP to `multiplayer_participants` + `game_sessions`. All returned functions are wrapped in `useCallback([])` — safe because they close only over module-level constants. Never omit them from `useEffect` deps. |
 | `useRealtimeRoom` | Thin Supabase Realtime wrapper: subscribes to `room:<code>` channel, exposes `broadcast(event)` and `onEvent(handler)`. Handles presence (join/leave). |
-| `useMultiplayerMath` | Combines `useMultiplayerRoom` + `useRealtimeRoom` for buzzer-mode math. Host-authoritative question advancement. |
+| `useMultiplayerMath` | Combines `useMultiplayerRoom` + `useRealtimeRoom` for buzzer-mode math. Manages phases: `ready` (players press "I'm Ready!") → `active` (question sequence) → `done` (results). Host-authoritative: question advancement, ready-gate (`markReady` / `readyNicknames`), and end-game. Exposes `claimerFlash` for the buzzer overlay. |
 | `useMultiplayerTyping` | Combines `useMultiplayerRoom` + `useRealtimeRoom` for typing race. Throttled progress broadcast (250ms). |
 
 ---
@@ -127,7 +127,7 @@ design-system/
 
 All tables have Row Level Security enabled. Policies restrict each user to their own rows.
 
-The `game_sessions`, `game_stat_mappings`, `multiplayer_rooms`, and `multiplayer_participants` tables are also live (multiplayer tables pending migration):
+The `game_sessions`, `game_stat_mappings`, `multiplayer_rooms`, and `multiplayer_participants` tables are also live:
 
 | Table | Key columns |
 |---|---|

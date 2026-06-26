@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, ChevronRight, Users } from 'lucide-react';
+import { ArrowLeft, ChevronRight, Users, LogIn } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { GAMES, type GameConfig } from '@/config/games';
 import { cn } from '@/lib/utils';
 
@@ -78,6 +80,17 @@ function GameCard({ game, onPlay, onMultiplayer }: { game: GameConfig; onPlay: (
 
 export default function GamesHub() {
   const navigate = useNavigate();
+  const [joinCode, setJoinCode] = useState('');
+  const [joinError, setJoinError] = useState('');
+
+  function handleJoin() {
+    const code = joinCode.trim().toUpperCase();
+    if (code.length !== 4) {
+      setJoinError('Room codes are 4 letters');
+      return;
+    }
+    navigate(`/games/room/${code}`);
+  }
 
   return (
     <div className="min-h-screen page-bg p-4 md:p-8">
@@ -120,8 +133,41 @@ export default function GamesHub() {
           ))}
         </div>
 
+        {/* Join a room */}
+        <div className="mt-6 rounded-xl border border-border bg-card p-4 flex flex-col gap-3">
+          <p className="text-sm font-semibold font-sans text-foreground flex items-center gap-2">
+            <Users className="w-4 h-4 text-primary" />
+            Join a room
+          </p>
+          <div className="flex gap-2">
+            <Input
+              value={joinCode}
+              onChange={e => {
+                setJoinCode(e.target.value.toUpperCase().replace(/[^A-Z]/g, ''));
+                setJoinError('');
+              }}
+              onKeyDown={e => e.key === 'Enter' && handleJoin()}
+              placeholder="ABCD"
+              maxLength={4}
+              className="font-mono text-base tracking-widest max-w-[120px] uppercase"
+            />
+            <Button
+              onClick={handleJoin}
+              disabled={!joinCode.trim()}
+              className="cursor-pointer flex items-center gap-1"
+            >
+              <LogIn className="w-4 h-4" />
+              Join
+            </Button>
+          </div>
+          {joinError && <p className="text-destructive text-xs">{joinError}</p>}
+          <p className="text-muted-foreground text-xs font-sans">
+            Enter the 4-letter code shared by the room host.
+          </p>
+        </div>
+
         {/* XP rules */}
-        <div className="mt-8 rounded-xl border border-border bg-card/50 p-4">
+        <div className="mt-4 rounded-xl border border-border bg-card/50 p-4">
           <p className="text-xs text-muted-foreground leading-relaxed">
             <span className="text-foreground font-medium">XP rules:</span>{' '}
             Each game awards up to <span className="text-primary">10 XP</span> per session based on

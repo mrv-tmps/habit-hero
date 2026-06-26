@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { MP_ROOM_CODE_LENGTH } from '@/config/constants';
 import type {
@@ -39,9 +40,12 @@ export function getStoredToken(roomCode: string): string | null {
 }
 
 export function useMultiplayerRoom() {
-  async function createRoom(
+  // All functions close only over module-level constants (db, MP_ROOM_CODE_LENGTH),
+  // so empty deps [] is correct — prevents re-render loops when used in useEffect deps.
+
+  const createRoom = useCallback(async (
     config: CreateRoomConfig,
-  ): Promise<{ room: MultiplayerRoom; participantToken: string }> {
+  ): Promise<{ room: MultiplayerRoom; participantToken: string }> => {
     const seed = Math.floor(Math.random() * 2 ** 31);
 
     let room: MultiplayerRoom | null = null;
@@ -91,13 +95,13 @@ export function useMultiplayerRoom() {
     sessionStorage.setItem(tokenKey(room.code), participantToken);
 
     return { room, participantToken };
-  }
+  }, []);
 
-  async function joinRoom(
+  const joinRoom = useCallback(async (
     code: string,
     nickname: string,
     userId?: string | null,
-  ): Promise<{ room: MultiplayerRoom; participantToken: string }> {
+  ): Promise<{ room: MultiplayerRoom; participantToken: string }> => {
     const { data: roomData, error: rError } = await db
       .from('multiplayer_rooms')
       .select()
@@ -128,11 +132,11 @@ export function useMultiplayerRoom() {
     sessionStorage.setItem(tokenKey(room.code), participantToken);
 
     return { room, participantToken };
-  }
+  }, []);
 
-  async function fetchParticipantByToken(
+  const fetchParticipantByToken = useCallback(async (
     token: string,
-  ): Promise<MultiplayerParticipant | null> {
+  ): Promise<MultiplayerParticipant | null> => {
     const { data, error } = await db
       .from('multiplayer_participants')
       .select()
@@ -141,9 +145,9 @@ export function useMultiplayerRoom() {
 
     if (error) return null;
     return data as MultiplayerParticipant;
-  }
+  }, []);
 
-  async function fetchRoom(code: string): Promise<MultiplayerRoom | null> {
+  const fetchRoom = useCallback(async (code: string): Promise<MultiplayerRoom | null> => {
     const { data, error } = await db
       .from('multiplayer_rooms')
       .select()
@@ -152,9 +156,9 @@ export function useMultiplayerRoom() {
 
     if (error) return null;
     return data as MultiplayerRoom;
-  }
+  }, []);
 
-  async function fetchParticipants(roomId: string): Promise<MultiplayerParticipant[]> {
+  const fetchParticipants = useCallback(async (roomId: string): Promise<MultiplayerParticipant[]> => {
     const { data, error } = await db
       .from('multiplayer_participants')
       .select()
@@ -163,27 +167,27 @@ export function useMultiplayerRoom() {
 
     if (error) return [];
     return (data ?? []) as MultiplayerParticipant[];
-  }
+  }, []);
 
-  async function leaveRoom(participantId: string): Promise<void> {
+  const leaveRoom = useCallback(async (participantId: string): Promise<void> => {
     const { error } = await db
       .from('multiplayer_participants')
       .delete()
       .eq('id', participantId);
 
     if (error) throw error;
-  }
+  }, []);
 
-  async function startGame(roomId: string): Promise<void> {
+  const startGame = useCallback(async (roomId: string): Promise<void> => {
     const { error } = await db
       .from('multiplayer_rooms')
       .update({ status: 'active' })
       .eq('id', roomId);
 
     if (error) throw error;
-  }
+  }, []);
 
-  async function finalizeResults(roomId: string, rankings: RankedResult[]): Promise<void> {
+  const finalizeResults = useCallback(async (roomId: string, rankings: RankedResult[]): Promise<void> => {
     await Promise.all(
       rankings.map(r =>
         db
@@ -204,7 +208,7 @@ export function useMultiplayerRoom() {
       .eq('id', roomId);
 
     if (error) throw error;
-  }
+  }, []);
 
   return {
     createRoom,

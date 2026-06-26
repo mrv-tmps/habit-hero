@@ -44,8 +44,10 @@ export interface RankedResult {
 
 export type MultiplayerEvent =
   | { type: 'game_start'; seed: number; start_at: string }
+  | { type: 'player_ready'; nickname: string }
+  | { type: 'game_begin' }
   | { type: 'answer_claimed'; question_idx: number; by_nickname: string }
   | { type: 'progress_update'; nickname: string; progress_pct: number; current_score: number; wpm?: number }
   | { type: 'player_finished'; nickname: string; final_score: number; wpm?: number }
   | { type: 'game_end'; rankings: RankedResult[] }
-  | { type: 'question_advance'; question_idx: number };
+  | { type: 'question_advance'; question_idx: number; claimer_nickname: string };
