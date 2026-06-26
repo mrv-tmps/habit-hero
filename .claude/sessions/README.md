@@ -10,6 +10,9 @@ Each file is a self-contained brief for a separate Claude Code session. Start a 
 | `session-2-multiplayer-math.md` | Math buzzer game (question gen, buzzer logic, live scoreboard) | Session 1 |
 | `session-3-multiplayer-typing.md` | TypeRacer-style typing race (progress bars, shared word sets) | Session 1 |
 | `session-4-code-typing-mode.md` | Code snippet typing (solo TypingTest extension + snippet data file) | Nothing — fully independent |
+| `session-5-coin-rush-solo.md` | Coin Rush solo core: 2D arena, rAF movement loop, joystick + WASD, deterministic coins/gems/saws, 90s round, high-score save | Nothing — engine is self-contained |
+| `session-6-coin-rush-multiplayer.md` | Coin Rush multiplayer: `useMultiplayerCoinRush`, 10 Hz position sync + interpolation, host-arbitrated coin claims, synced countdown, results + XP | Sessions 1 & 5 |
+| `session-7-coin-rush-polish.md` | Coin Rush polish: difficulty tuning, juice, mobile/portrait QA across all breakpoints | Sessions 5 & 6 |
 
 ## Recommended order
 
@@ -17,9 +20,16 @@ Each file is a self-contained brief for a separate Claude Code session. Start a 
 Session 1  →  Session 2  →  Session 3
                                 ↑
                Session 4 ───────┘  (can run any time)
+
+Session 5  →  Session 6  →  Session 7        (Coin Rush track)
+   ↑             ↑
+ self-      needs Session 1
+contained   (multiplayer infra)
 ```
 
 Session 4 can be done at any point — it has no dependency on Sessions 1–3. Its output (`src/data/codeSnippets.ts`) is consumed by Session 3, so ideally finish Session 4 before completing Session 3.
+
+**Coin Rush track (5 → 6 → 7):** Session 5 (solo) is fully self-contained and proves the game feel with zero netcode — start there. Session 6 layers multiplayer on top and also needs Session 1's multiplayer infrastructure. Session 7 polishes both. Design reference for all three: `design-system/habit-quest/pages/coin-rush.md`.
 
 ## How to start a session
 
@@ -32,3 +42,4 @@ Session 4 can be done at any point — it has no dependency on Sessions 1–3. I
 All sessions defer to:
 - `design-system/habit-quest/MASTER.md` — global design rules
 - `design-system/habit-quest/pages/multiplayer.md` — multiplayer-specific design spec
+- `design-system/habit-quest/pages/coin-rush.md` — Coin Rush minigame design spec (Sessions 5–7)
