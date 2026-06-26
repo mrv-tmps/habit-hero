@@ -1,11 +1,11 @@
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, ChevronRight, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { GAMES, type GameConfig } from '@/config/games';
 import { cn } from '@/lib/utils';
 
-function GameCard({ game, onPlay }: { game: GameConfig; onPlay: () => void }) {
+function GameCard({ game, onPlay, onMultiplayer }: { game: GameConfig; onPlay: () => void; onMultiplayer?: () => void }) {
   const Icon = game.icon;
   const isLive = game.status === 'live';
 
@@ -20,7 +20,6 @@ function GameCard({ game, onPlay }: { game: GameConfig; onPlay: () => void }) {
       onClick={isLive ? onPlay : undefined}
     >
       <div className="flex items-start justify-between">
-        {/* Icon container */}
         <div className={cn(
           'w-11 h-11 rounded-lg flex items-center justify-center border transition-colors duration-200',
           isLive
@@ -53,13 +52,25 @@ function GameCard({ game, onPlay }: { game: GameConfig; onPlay: () => void }) {
       </div>
 
       {isLive && (
-        <Button
-          size="sm"
-          className="self-start flex items-center gap-1"
-          onClick={e => { e.stopPropagation(); onPlay(); }}
-        >
-          Play Now <ChevronRight className="w-4 h-4" />
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            className="flex items-center gap-1 cursor-pointer"
+            onClick={e => { e.stopPropagation(); onPlay(); }}
+          >
+            Play Now <ChevronRight className="w-4 h-4" />
+          </Button>
+          {onMultiplayer && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="flex items-center gap-1 cursor-pointer"
+              onClick={e => { e.stopPropagation(); onMultiplayer(); }}
+            >
+              <Users className="w-4 h-4" /> Multiplayer
+            </Button>
+          )}
+        </div>
       )}
     </div>
   );
@@ -100,6 +111,11 @@ export default function GamesHub() {
               key={game.id}
               game={game}
               onPlay={() => navigate(game.route)}
+              onMultiplayer={
+                game.status === 'live' && game.multiplayerRoute
+                  ? () => navigate(`/games/room/new?game=${game.id}`)
+                  : undefined
+              }
             />
           ))}
         </div>

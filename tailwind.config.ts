@@ -119,6 +119,10 @@ export default {
           "25%": { transform: "translateX(-3px)" },
           "75%": { transform: "translateX(3px)" },
         },
+        "fade-in": {
+          from: { opacity: "0", transform: "translateY(4px)" },
+          to: { opacity: "1", transform: "translateY(0)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -126,6 +130,7 @@ export default {
         titlePulse: "titlePulse 1.5s ease-in-out infinite",
         "caret-blink": "caret-blink 1s ease-in-out infinite",
         "char-error": "char-error 0.2s ease-in-out",
+        "fade-in": "fade-in 150ms ease-out",
       },
     },
   },

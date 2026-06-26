@@ -1,6 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import { Keyboard, Calculator } from 'lucide-react';
 import { XP_PER_SESSION_CAP, DAILY_SESSION_CAP } from './constants';
+import type { GameType } from '@/types/multiplayer';
 
 export interface GameConfig {
   id: string;
@@ -13,6 +14,8 @@ export interface GameConfig {
   xpFormula: (score: number, accuracy: number) => number;
   sessionCapPerDay: number;
   xpCapPerSession: number;
+  multiplayerRoute?: string;
+  multiplayerGameType?: GameType;
 }
 
 export const GAMES: GameConfig[] = [
@@ -28,6 +31,8 @@ export const GAMES: GameConfig[] = [
       Math.min(Math.floor((wpm / 10) * accuracy), XP_PER_SESSION_CAP),
     sessionCapPerDay: DAILY_SESSION_CAP,
     xpCapPerSession: XP_PER_SESSION_CAP,
+    multiplayerRoute: '/games/typing/multiplayer',
+    multiplayerGameType: 'typing-race',
   },
   {
     id: 'math',
@@ -41,5 +46,7 @@ export const GAMES: GameConfig[] = [
       Math.min(Math.floor((score / 10) * accuracy), XP_PER_SESSION_CAP),
     sessionCapPerDay: DAILY_SESSION_CAP,
     xpCapPerSession: XP_PER_SESSION_CAP,
+    multiplayerRoute: '/games/math/multiplayer',
+    multiplayerGameType: 'math-buzzer',
   },
 ];

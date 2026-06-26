@@ -15,6 +15,9 @@ import TypingTest from "./pages/TypingTest";
 import TypingHistory from "./pages/TypingHistory";
 import MathChallenge from "./pages/MathChallenge";
 import ErrorPage from "./pages/Error";
+import CreateRoom from "./pages/CreateRoom";
+import RoomLobby from "./pages/RoomLobby";
+import MultiplayerGame from "./pages/MultiplayerGame";
 
 const queryClient = new QueryClient();
 
@@ -67,6 +70,9 @@ function AppRoutes() {
       <Route path="/games/typing" element={<TypingTest />} />
       <Route path="/games/typing/history" element={<ProtectedRoute><TypingHistory /></ProtectedRoute>} />
       <Route path="/games/math" element={<MathChallenge />} />
+      <Route path="/games/room/new" element={<CreateRoom />} />
+      <Route path="/games/room/:code" element={<RoomLobby />} />
+      <Route path="/games/room/:code/play" element={<MultiplayerGame />} />
       <Route path="/error" element={<ErrorPage />} />
       <Route path="*" element={<ErrorPage />} />
     </Routes>

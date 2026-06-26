@@ -65,6 +65,16 @@
     /* Game hub */
     --game-live: 140 65% 45%;
     --game-coming-soon: 240 5% 35%;
+
+    /* Multiplayer player slot colors */
+    --player-1: 45 90% 55%;
+    --player-2: 210 80% 55%;
+    --player-3: 140 65% 45%;
+    --player-4: 270 60% 60%;
+    --player-5: 0 75% 55%;
+    --player-6: 30 85% 55%;
+    --player-7: 180 60% 45%;
+    --player-8: 300 55% 55%;
   }
 }
 
@@ -164,6 +174,31 @@
     background-attachment: fixed, fixed, fixed;
   }
 
+  /* Multiplayer active-game mode */
+  [data-mode="multiplayer"] {
+    background: hsl(var(--focused-bg));
+  }
+  [data-mode="multiplayer"] header,
+  [data-mode="multiplayer"] nav {
+    display: none;
+  }
+  [data-mode="multiplayer"] .card-glow,
+  [data-mode="multiplayer"] .stat-glow-strength,
+  [data-mode="multiplayer"] .stat-glow-intelligence,
+  [data-mode="multiplayer"] .stat-glow-endurance {
+    box-shadow: none;
+    text-shadow: none;
+  }
+
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .animate-fade-in {
+    animation: fade-in 150ms ease-out;
+  }
+
   /* Focused mode — applied via data-mode="focused" on page wrapper */
   [data-mode="focused"] {
     background-color: hsl(var(--focused-bg));
@@ -192,7 +227,8 @@
     .animate-pulse-glow,
     .animate-level-up,
     .animate-caret-blink,
-    .animate-char-error {
+    .animate-char-error,
+    .animate-fade-in {
       animation: none;
     }
   }
