@@ -68,11 +68,14 @@ design-system/
 | `/games/typing` | `TypingTest.tsx` | None — public |
 | `/games/typing/history` | `TypingHistory.tsx` | `ProtectedRoute` |
 | `/games/math` | `MathChallenge.tsx` | None — public |
+| `/games/room/new` | `CreateRoom.tsx` | None — public |
+| `/games/room/:code` | `RoomLobby.tsx` | None — public |
+| `/games/room/:code/play` | `MultiplayerGame.tsx` | None — public |
 | `/error` | `Error.tsx` | None |
 
 `ProtectedRoute` redirects to `/landing` when there is no authenticated user and no active guest session. `AuthRoute` redirects authenticated users away from `/auth` and `/landing`.
 
-**Public game routes** — `/games`, `/games/typing`, and `/games/math` require no auth. Unauthenticated visitors can play freely; XP is not saved unless they sign in. The results screen shows a "sign in" prompt for all unauthenticated states (guest or fully anonymous).
+**Public game routes** — `/games`, `/games/typing`, `/games/math`, and all `/games/room/*` routes require no auth. Unauthenticated visitors can play freely; XP is not saved unless they sign in. Multiplayer guests enter a nickname (stored in `sessionStorage`); their `participant_token` UUID is used for RLS on participant row updates.
 
 ---
 
@@ -85,6 +88,10 @@ design-system/
 | `useLeaderboard` | Fetches top 20 profiles ordered by `total_xp`. |
 | `useHabitTracker` | Legacy localStorage-backed tracker (pre-Supabase). Not used in current pages. |
 | `use-mobile` | Returns boolean from `window.matchMedia('(max-width: 768px)')`. |
+| `useMultiplayerRoom` | Creates/joins/leaves rooms; host promotion; finalizes results and writes XP to `multiplayer_participants` + `game_sessions`. |
+| `useRealtimeRoom` | Thin Supabase Realtime wrapper: subscribes to `room:<code>` channel, exposes `broadcast(event)` and `onEvent(handler)`. Handles presence (join/leave). |
+| `useMultiplayerMath` | Combines `useMultiplayerRoom` + `useRealtimeRoom` for buzzer-mode math. Host-authoritative question advancement. |
+| `useMultiplayerTyping` | Combines `useMultiplayerRoom` + `useRealtimeRoom` for typing race. Throttled progress broadcast (250ms). |
 
 ---
 
@@ -120,12 +127,14 @@ design-system/
 
 All tables have Row Level Security enabled. Policies restrict each user to their own rows.
 
-The `game_sessions` and `game_stat_mappings` tables are also live:
+The `game_sessions`, `game_stat_mappings`, `multiplayer_rooms`, and `multiplayer_participants` tables are also live (multiplayer tables pending migration):
 
 | Table | Key columns |
 |---|---|
 | `game_sessions` | `id, user_id, game_type, score_wpm, accuracy, xp_earned, completed_at` — one row per minigame session. `score_wpm` stores WPM for typing, correct-answer count for math. |
 | `game_stat_mappings` | `user_id, game_type, stat_id` — which stat a user has linked to each game. One row per user per game, set once, never changed. UNIQUE on `(user_id, game_type)`. |
+| `multiplayer_rooms` | `id, code (4-char unique), game_type, difficulty, host_user_id (nullable), status (waiting/active/finished), question_count, time_limit_seconds, max_players, seed (BIGINT), created_at` |
+| `multiplayer_participants` | `id, room_id, user_id (nullable), nickname, is_host, progress_pct, current_score, finished_at, xp_earned, position, participant_token (UUID)` — anonymous identity via `participant_token` in `sessionStorage` |
 
 ---
 
