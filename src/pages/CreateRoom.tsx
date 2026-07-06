@@ -19,15 +19,25 @@ import {
   MP_QUESTION_COUNT_OPTIONS,
   MP_TIME_LIMIT_OPTIONS,
   MP_MATH_DIFFICULTY,
+  MP_TYPING_MODE,
+  MP_CODE_LANGUAGES,
 } from '@/config/constants';
 import { useMultiplayerRoom } from '@/hooks/useMultiplayerRoom';
 import { useAuth } from '@/contexts/AuthContext';
-import type { MathDifficulty, GameType } from '@/types/multiplayer';
+import type { MathDifficulty, TypingMode, CodeLanguage, GameType } from '@/types/multiplayer';
+
+const CODE_LANGUAGE_LABELS: Record<CodeLanguage, string> = {
+  javascript: 'JavaScript',
+  python: 'Python',
+  c: 'C',
+};
 
 const schema = z
   .object({
     nickname: z.string().min(1, 'Nickname is required').max(16),
     difficulty: z.enum(MP_MATH_DIFFICULTY).optional(),
+    typing_mode: z.enum(MP_TYPING_MODE).optional(),
+    code_language: z.enum(MP_CODE_LANGUAGES).optional(),
     question_count: z.string().optional(),
     time_limit_seconds: z.string().optional(),
     max_players: z.string(),
@@ -35,6 +45,10 @@ const schema = z
   .refine(data => data.question_count || data.time_limit_seconds, {
     message: 'Pick a question count or a time limit',
     path: ['question_count'],
+  })
+  .refine(data => data.typing_mode !== 'code' || !!data.code_language, {
+    message: 'Pick a language',
+    path: ['code_language'],
   });
 
 type FormValues = z.infer<typeof schema>;
@@ -69,11 +83,13 @@ export default function CreateRoom() {
     defaultValues: {
       nickname: '',
       max_players: '8',
+      typing_mode: isMath ? undefined : 'english',
     },
   });
 
   const questionCount = watch('question_count');
   const timeLimit = watch('time_limit_seconds');
+  const typingMode = watch('typing_mode');
 
   async function onSubmit(values: FormValues) {
     setError(null);
@@ -82,6 +98,10 @@ export default function CreateRoom() {
       const { room } = await createRoom({
         game_type: gameType,
         difficulty: isMath ? (values.difficulty as MathDifficulty) : undefined,
+        typing_mode: isMath ? undefined : (values.typing_mode as TypingMode),
+        code_language: !isMath && values.typing_mode === 'code'
+          ? (values.code_language as CodeLanguage)
+          : undefined,
         question_count: values.question_count ? Number(values.question_count) : undefined,
         time_limit_seconds: values.time_limit_seconds
           ? Number(values.time_limit_seconds)
@@ -160,6 +180,47 @@ export default function CreateRoom() {
               </div>
             )}
 
+            {/* Mode (typing only) */}
+            {!isMath && (
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-sm font-sans">Mode</Label>
+                <Select
+                  onValueChange={v => setValue('typing_mode', v as TypingMode)}
+                  defaultValue="english"
+                >
+                  <SelectTrigger className="cursor-pointer">
+                    <SelectValue placeholder="Pick a mode" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="english" className="cursor-pointer">English Words</SelectItem>
+                    <SelectItem value="code" className="cursor-pointer">Code Snippet</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Language (typing code mode only) */}
+            {!isMath && typingMode === 'code' && (
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-sm font-sans">Language</Label>
+                <Select onValueChange={v => setValue('code_language', v as CodeLanguage)}>
+                  <SelectTrigger className="cursor-pointer">
+                    <SelectValue placeholder="Pick a language" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MP_CODE_LANGUAGES.map(lang => (
+                      <SelectItem key={lang} value={lang} className="cursor-pointer">
+                        {CODE_LANGUAGE_LABELS[lang]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {errors.code_language && (
+                  <p className="text-destructive text-xs">{errors.code_language.message}</p>
+                )}
+              </div>
+            )}
+
             {/* Session length */}
             <div className="flex flex-col gap-2">
               <Label className="text-sm font-sans">Session length</Label>
@@ -172,12 +233,12 @@ export default function CreateRoom() {
                 }}
               >
                 <SelectTrigger className="cursor-pointer">
-                  <SelectValue placeholder="Number of questions" />
+                  <SelectValue placeholder={isMath ? 'Number of questions' : 'Number of words'} />
                 </SelectTrigger>
                 <SelectContent>
                   {MP_QUESTION_COUNT_OPTIONS.map(n => (
                     <SelectItem key={n} value={String(n)} className="cursor-pointer">
-                      {n} questions
+                      {n} {isMath ? 'questions' : 'words'}
                     </SelectItem>
                   ))}
                 </SelectContent>

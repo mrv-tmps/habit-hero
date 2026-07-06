@@ -16,4 +16,6 @@ export const MP_QUESTION_COUNT_OPTIONS = [10, 20, 30] as const;
 export const MP_TIME_LIMIT_OPTIONS = [30, 60, 90] as const;
 export const MP_MATH_DIFFICULTY = ['easy', 'medium', 'hard'] as const;
 export const MP_TYPING_MODE = ['english', 'code'] as const;
+export const MP_CODE_LANGUAGES = ['javascript', 'python', 'c'] as const;
+export const MP_TYPING_WORD_COUNT = 60;
 export const MP_RESULT_DISPLAY_MS = 8000;

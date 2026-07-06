@@ -4,6 +4,8 @@ import { MP_ROOM_CODE_LENGTH } from '@/config/constants';
 import type {
   GameType,
   MathDifficulty,
+  TypingMode,
+  CodeLanguage,
   MultiplayerRoom,
   MultiplayerParticipant,
   RankedResult,
@@ -12,6 +14,8 @@ import type {
 export interface CreateRoomConfig {
   game_type: GameType;
   difficulty?: MathDifficulty;
+  typing_mode?: TypingMode;
+  code_language?: CodeLanguage;
   question_count?: number;
   time_limit_seconds?: number;
   max_players?: number;
@@ -58,6 +62,8 @@ export function useMultiplayerRoom() {
           code,
           game_type: config.game_type,
           difficulty: config.difficulty ?? null,
+          typing_mode: config.typing_mode ?? null,
+          code_language: config.code_language ?? null,
           host_user_id: config.user_id ?? null,
           question_count: config.question_count ?? null,
           time_limit_seconds: config.time_limit_seconds ?? null,

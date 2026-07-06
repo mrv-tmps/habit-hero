@@ -15,6 +15,8 @@ export interface MultiplayerRoom {
   time_limit_seconds: number | null;
   max_players: number;
   seed: number;
+  typing_mode: TypingMode | null;
+  code_language: CodeLanguage | null;
   created_at: string;
 }
 

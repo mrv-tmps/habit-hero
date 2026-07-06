@@ -3,19 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Loader2, Zap } from 'lucide-react';
 import { useMultiplayerRoom } from '@/hooks/useMultiplayerRoom';
 import MultiplayerMath from '@/pages/MultiplayerMath';
+import MultiplayerTyping from '@/pages/MultiplayerTyping';
 import type { MultiplayerRoom } from '@/types/multiplayer';
-
-function MultiplayerTyping({ room }: { room: MultiplayerRoom }) {
-  return (
-    <div className="min-h-screen page-bg flex items-center justify-center">
-      <div className="text-center">
-        <p className="font-pixel text-primary text-sm mb-2">TYPING RACE</p>
-        <p className="text-muted-foreground font-sans text-sm">Coming in Session 3</p>
-        <p className="text-muted-foreground font-mono text-xs mt-2">Room: {room.code}</p>
-      </div>
-    </div>
-  );
-}
 
 export default function MultiplayerGame() {
   const { code } = useParams<{ code: string }>();
