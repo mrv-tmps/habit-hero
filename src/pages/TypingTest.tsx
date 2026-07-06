@@ -203,38 +203,40 @@ export default function TypingTest() {
     reset(m);
   };
 
-  // ── Keyboard handler ────────────────────────────────────────────────────────
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  // ── Input handler ───────────────────────────────────────────────────────────
+  // Driven by onChange (not keydown) so mobile IME/autocomplete input works —
+  // virtual keyboards report e.key as "Unidentified" on keydown, so a
+  // keydown-only handler silently drops every keystroke on Android/iOS.
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (phase === 'done') return;
 
-    if (e.key.length === 1 || e.key === 'Backspace' || e.key === ' ') {
-      e.preventDefault();
-    }
+    const raw = e.target.value;
 
     if (phase === 'idle') {
-      if (e.key.length !== 1) return;
+      if (raw.length === 0) return;
       setPhase('active');
       startTimer();
-      setTypedChars(e.key);
+    }
+
+    if (!raw.includes(' ')) {
+      setTypedChars(raw);
       return;
     }
 
-    if (e.key === ' ') {
-      if (typedChars.length === 0) return;
-      setWordResults(prev => [...prev, { typed: typedChars, target: words[wordIdx] }]);
-      setWordIdx(prev => prev + 1);
-      setTypedChars('');
-      return;
+    // one or more words committed via space(s) in a single change event
+    const parts = raw.split(' ');
+    const trailing = parts.pop() ?? '';
+    const wordsToCommit = parts.filter(w => w.length > 0);
+
+    if (wordsToCommit.length > 0) {
+      setWordResults(prev => [
+        ...prev,
+        ...wordsToCommit.map((w, i) => ({ typed: w, target: words[wordIdx + i] })),
+      ]);
+      setWordIdx(prev => prev + wordsToCommit.length);
     }
 
-    if (e.key === 'Backspace') {
-      setTypedChars(prev => prev.slice(0, -1));
-      return;
-    }
-
-    if (e.key.length === 1) {
-      setTypedChars(prev => prev + e.key);
-    }
+    setTypedChars(trailing);
   };
 
   // ── Stat picker submit ───────────────────────────────────────────────────────
@@ -570,9 +572,8 @@ export default function TypingTest() {
       {/* Hidden keyboard sink */}
       <input
         ref={inputRef}
-        value=""
-        onChange={() => {}}
-        onKeyDown={handleKeyDown}
+        value={typedChars}
+        onChange={handleInputChange}
         onBlur={() => {
           if (phase === 'active') {
             requestAnimationFrame(() => inputRef.current?.focus());
@@ -584,6 +585,9 @@ export default function TypingTest() {
         autoComplete="off"
         autoCorrect="off"
         autoCapitalize="off"
+        autoFocus={false}
+        inputMode="text"
+        enterKeyHint="none"
         spellCheck={false}
       />
     </div>
