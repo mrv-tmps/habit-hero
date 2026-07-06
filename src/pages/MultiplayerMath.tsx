@@ -1,240 +1,13 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Trophy, Medal, Award, MonitorSmartphone, X, Check, Loader2, Delete } from 'lucide-react';
+import { MonitorSmartphone, X, Delete } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useMultiplayerMath } from '@/hooks/useMultiplayerMath';
-import { useAuth } from '@/contexts/AuthContext';
 import { useIsMobile } from '@/hooks/use-mobile';
-import type { MultiplayerRoom, MultiplayerParticipant, RankedResult } from '@/types/multiplayer';
-import { MP_RESULT_DISPLAY_MS } from '@/config/constants';
+import ReadyScreen from '@/components/multiplayer/ReadyScreen';
+import MultiplayerResults from '@/components/multiplayer/MultiplayerResults';
+import { slotColor } from '@/components/multiplayer/playerColors';
+import type { MultiplayerRoom } from '@/types/multiplayer';
 import { cn } from '@/lib/utils';
-
-const PLAYER_SLOT_COLORS = [
-  'bg-[hsl(var(--player-1))]',
-  'bg-[hsl(var(--player-2))]',
-  'bg-[hsl(var(--player-3))]',
-  'bg-[hsl(var(--player-4))]',
-  'bg-[hsl(var(--player-5))]',
-  'bg-[hsl(var(--player-6))]',
-  'bg-[hsl(var(--player-7))]',
-  'bg-[hsl(var(--player-8))]',
-];
-
-function slotColor(idx: number) {
-  return PLAYER_SLOT_COLORS[idx % PLAYER_SLOT_COLORS.length];
-}
-
-// ─── Results screen ───────────────────────────────────────────────────────────
-
-interface ResultsProps {
-  rankings: RankedResult[];
-  participants: MultiplayerParticipant[];
-  ownNickname: string;
-}
-
-function MultiplayerResults({ rankings, participants, ownNickname }: ResultsProps) {
-  const navigate = useNavigate();
-  const { user } = useAuth();
-  const [countdown, setCountdown] = useState(Math.ceil(MP_RESULT_DISPLAY_MS / 1000));
-
-  useEffect(() => {
-    const timer = setTimeout(() => navigate('/games'), MP_RESULT_DISPLAY_MS);
-    const interval = setInterval(() => setCountdown(c => Math.max(0, c - 1)), 1000);
-    return () => { clearTimeout(timer); clearInterval(interval); };
-  }, [navigate]);
-
-  const hasAuthPlayer = rankings.some(r => r.user_id !== null);
-
-  const nicknameToSlot = useMemo(() => {
-    const m: Record<string, number> = {};
-    participants.forEach((p, i) => { m[p.nickname] = i; });
-    return m;
-  }, [participants]);
-
-  function RankIcon({ position }: { position: number }) {
-    if (position === 1) return <Trophy className="w-4 h-4 text-primary shrink-0" />;
-    if (position === 2) return <Medal className="w-4 h-4 text-primary opacity-75 shrink-0" />;
-    return <Award className="w-4 h-4 text-muted-foreground shrink-0" />;
-  }
-
-  return (
-    <div className="min-h-screen page-bg flex items-center justify-center p-4">
-      <div className="w-full max-w-lg bg-card border border-border rounded-xl p-6 flex flex-col gap-6">
-        <h1 className="font-pixel text-xl text-xpGlow animate-titlePulse text-center">
-          Race Complete!
-        </h1>
-
-        <div className="flex flex-col gap-1">
-          {rankings.map(r => {
-            const isMe = r.nickname === ownNickname;
-            const slotIdx = nicknameToSlot[r.nickname] ?? 0;
-
-            return (
-              <div
-                key={r.nickname}
-                className={cn(
-                  'flex items-center gap-3 rounded-md px-3 py-2',
-                  isMe ? 'bg-secondary/60' : '',
-                )}
-              >
-                <RankIcon position={r.position} />
-                <span className={cn('w-2 h-2 rounded-full shrink-0', slotColor(slotIdx))} />
-                <span className="font-sans text-sm text-foreground flex-1 truncate">
-                  {r.nickname}
-                  {isMe && <span className="text-muted-foreground text-xs ml-1">(you)</span>}
-                </span>
-                <span className="font-mono text-sm text-foreground shrink-0">
-                  {r.score} {r.score === 1 ? 'pt' : 'pts'}
-                </span>
-                {hasAuthPlayer && (
-                  <span className="font-mono text-xs text-muted-foreground shrink-0 w-20 text-right">
-                    {r.user_id && r.xp_earned > 0 ? (
-                      <>
-                        +{r.xp_earned} XP
-                        {r.position <= 2 && (
-                          <span className="text-muted-foreground text-xs ml-1">
-                            {r.position === 1 ? '(×1.5)' : '(×1.25)'}
-                          </span>
-                        )}
-                      </>
-                    ) : r.user_id ? (
-                      <span className="text-muted-foreground">+0 XP</span>
-                    ) : (
-                      '—'
-                    )}
-                  </span>
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        {!user && (
-          <p className="text-muted-foreground text-xs text-center font-sans">
-            Sign in to earn XP for your wins.
-          </p>
-        )}
-
-        <div className="flex flex-col sm:flex-row gap-2">
-          <Button
-            className="flex-1 cursor-pointer"
-            onClick={() => navigate(`/games/room/new?game=math-buzzer`)}
-          >
-            Play Again
-          </Button>
-          <Button
-            variant="outline"
-            className="flex-1 cursor-pointer"
-            onClick={() => navigate('/games')}
-          >
-            Back to Games
-          </Button>
-        </div>
-
-        <p className="text-muted-foreground text-xs text-center font-sans">
-          Returning to games in {countdown}s…
-        </p>
-      </div>
-    </div>
-  );
-}
-
-// ─── Ready screen ─────────────────────────────────────────────────────────────
-
-interface ReadyScreenProps {
-  room: MultiplayerRoom;
-  participants: MultiplayerParticipant[];
-  readyNicknames: string[];
-  ownNickname: string;
-  onReady: () => void;
-}
-
-function ReadyScreen({ room, participants, readyNicknames, ownNickname, onReady }: ReadyScreenProps) {
-  const [hasMarkedReady, setHasMarkedReady] = useState(false);
-  const readySet = new Set(readyNicknames);
-  const isLoading = participants.length === 0;
-
-  function handleReady() {
-    setHasMarkedReady(true);
-    onReady();
-  }
-
-  const nicknameToSlot = useMemo(() => {
-    const m: Record<string, number> = {};
-    participants.forEach((p, i) => { m[p.nickname] = i; });
-    return m;
-  }, [participants]);
-
-  return (
-    <div data-mode="multiplayer" className="min-h-screen flex flex-col items-center justify-center gap-8 p-6">
-      <div className="text-center flex flex-col gap-1">
-        <p className="font-pixel text-sm text-primary tracking-widest">MATH BUZZER</p>
-        <p className="font-mono text-xs text-muted-foreground">
-          {room.code} · {room.difficulty ?? 'easy'} · {room.question_count ?? 10} questions
-        </p>
-      </div>
-
-      <div className="w-full max-w-xs flex flex-col gap-2">
-        {isLoading ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-          </div>
-        ) : (
-          participants.map(p => {
-            const slotIdx = nicknameToSlot[p.nickname] ?? 0;
-            const isReady = readySet.has(p.nickname);
-            const isMe = p.nickname === ownNickname;
-            return (
-              <div
-                key={p.id}
-                className={cn(
-                  'flex items-center gap-3 px-3 py-2 rounded-md border',
-                  isMe ? 'bg-secondary border-border' : 'bg-card border-border',
-                )}
-              >
-                <span className={cn('w-2 h-2 rounded-full shrink-0', slotColor(slotIdx))} />
-                <span className="font-sans text-sm flex-1 truncate">
-                  {p.nickname}
-                  {isMe && <span className="text-muted-foreground text-xs ml-1">(you)</span>}
-                  {p.is_host && <span className="text-muted-foreground text-xs ml-1">· host</span>}
-                </span>
-                {isReady ? (
-                  <Check className="w-4 h-4 text-[hsl(var(--focused-text-correct))] shrink-0" />
-                ) : (
-                  <span className="font-mono text-xs text-muted-foreground">…</span>
-                )}
-              </div>
-            );
-          })
-        )}
-      </div>
-
-      <div className="flex flex-col items-center gap-3">
-        <Button
-          size="lg"
-          onClick={handleReady}
-          disabled={hasMarkedReady || !ownNickname || isLoading}
-          className="min-w-[160px] cursor-pointer"
-        >
-          {hasMarkedReady ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin mr-2" />
-              Waiting…
-            </>
-          ) : (
-            "I'm Ready!"
-          )}
-        </Button>
-
-        {!isLoading && (
-          <p className="text-muted-foreground text-xs font-sans">
-            {readyNicknames.length} / {participants.length} ready
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}
 
 // ─── Buzzer overlay ───────────────────────────────────────────────────────────
 
@@ -459,7 +232,8 @@ export default function MultiplayerMath({ room }: { room: MultiplayerRoom }) {
   if (phase === 'ready') {
     return (
       <ReadyScreen
-        room={room}
+        title="MATH BUZZER"
+        subtitle={`${room.code} · ${room.difficulty ?? 'easy'} · ${room.question_count ?? 10} questions`}
         participants={participants}
         readyNicknames={readyNicknames}
         ownNickname={ownNickname}
@@ -476,6 +250,8 @@ export default function MultiplayerMath({ room }: { room: MultiplayerRoom }) {
         rankings={rankings}
         participants={participants}
         ownNickname={ownNickname}
+        scoreUnit="points"
+        playAgainGameId="math"
       />
     );
   }

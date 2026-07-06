@@ -21,17 +21,18 @@ import { useUserData } from '@/hooks/useUserData';
 import { useGameSessions } from '@/hooks/useGameSessions';
 import { WORD_LIST } from '@/data/wordList';
 import { TYPING_WORD_POOL_SIZE, TYPING_TIMER_OPTIONS } from '@/config/constants';
+import {
+  getCharStatuses,
+  calculateWpm,
+  calculateAccuracy,
+  type WordResult,
+} from '@/lib/typingRender';
 import { cn } from '@/lib/utils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Phase = 'idle' | 'active' | 'done';
 type TimerMode = typeof TYPING_TIMER_OPTIONS[number];
-
-interface WordResult {
-  typed: string;
-  target: string;
-}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -41,16 +42,10 @@ function generatePool(): string[] {
 
 function computeFinalMetrics(results: WordResult[], mode: number) {
   const correctWords = results.filter(r => r.typed === r.target).length;
-  const wpm = Math.round((correctWords / mode) * 60);
-
-  const totalTyped = results.reduce((s, r) => s + r.typed.length, 0);
-  const correctTyped = results.reduce(
-    (s, r) => s + r.typed.split('').filter((c, i) => c === r.target[i]).length,
-    0,
-  );
-  const accuracy = totalTyped > 0 ? Math.round((correctTyped / totalTyped) * 100) : 100;
-
-  return { wpm, accuracy };
+  return {
+    wpm: calculateWpm(correctWords, mode),
+    accuracy: calculateAccuracy(results),
+  };
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -258,22 +253,18 @@ export default function TypingTest() {
       ? typedChars
       : '';
 
-    const charSpans: React.ReactNode[] = word.split('').map((char, cIdx) => {
-      const charTyped = typed[cIdx];
-      let cls = 'text-focused-dim';
-      if (charTyped !== undefined) {
-        cls = charTyped === char ? 'text-focused-correct' : 'text-focused-incorrect';
-      }
-      return <span key={cIdx} className={cls}>{char}</span>;
-    });
+    const statusCls: Record<string, string> = {
+      upcoming: 'text-focused-dim',
+      correct: 'text-focused-correct',
+      incorrect: 'text-focused-incorrect',
+    };
 
-    if (isCurrent && typedChars.length > word.length) {
-      typedChars.slice(word.length).split('').forEach((c, i) => {
-        charSpans.push(
-          <span key={`x${i}`} className="text-focused-incorrect">{c}</span>,
-        );
-      });
-    }
+    // Overflow characters are only shown on the current word, matching prior behavior.
+    const cells = getCharStatuses(word, typed);
+    const visibleCells = isCurrent ? cells : cells.slice(0, word.length);
+    const charSpans: React.ReactNode[] = visibleCells.map((cell, cIdx) => (
+      <span key={cIdx} className={statusCls[cell.status]}>{cell.char}</span>
+    ));
 
     if (isCurrent && phase !== 'done') {
       const caretPos = Math.min(typedChars.length, charSpans.length);
@@ -306,9 +297,10 @@ export default function TypingTest() {
 
   // ── Live WPM ────────────────────────────────────────────────────────────────
   const elapsedSeconds = mode - timeLeft;
-  const liveWpm = elapsedSeconds > 0
-    ? Math.round((wordResults.filter(r => r.typed === r.target).length / elapsedSeconds) * 60)
-    : 0;
+  const liveWpm = calculateWpm(
+    wordResults.filter(r => r.typed === r.target).length,
+    elapsedSeconds,
+  );
 
   const mappedStatName = userStats.find(s => s.id === statMapping)?.stat_name ?? null;
   const xpSessionsLeft = Math.max(0, 3 - todaySessionCount);
