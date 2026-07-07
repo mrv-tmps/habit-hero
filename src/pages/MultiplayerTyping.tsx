@@ -7,6 +7,7 @@ import { useMultiplayerTyping } from '@/hooks/useMultiplayerTyping';
 import { useIsMobile } from '@/hooks/use-mobile';
 import ReadyScreen from '@/components/multiplayer/ReadyScreen';
 import MultiplayerResults from '@/components/multiplayer/MultiplayerResults';
+import CountdownOverlay from '@/components/multiplayer/CountdownOverlay';
 import { slotColor, slotColorVar } from '@/components/multiplayer/playerColors';
 import { getCharStatuses } from '@/lib/typingRender';
 import type { MultiplayerRoom } from '@/types/multiplayer';
@@ -144,6 +145,7 @@ export default function MultiplayerTyping({ room }: { room: MultiplayerRoom }) {
     participants,
     readyNicknames,
     markReady,
+    startRace,
     handleEnglishInput,
     handleCodeKey,
   } = useMultiplayerTyping(room);
@@ -215,6 +217,11 @@ export default function MultiplayerTyping({ room }: { room: MultiplayerRoom }) {
 
   return (
     <div data-mode="multiplayer" className="min-h-screen flex flex-col">
+      {/* Start countdown — clock does not start until this finishes (phase → active) */}
+      {phase === 'countdown' && (
+        <CountdownOverlay label="Race starts in" onDone={startRace} className="z-30" />
+      )}
+
       {/* Mobile warning */}
       {isMobile && !mobileDismissed && (
         <div className="z-20 flex items-center gap-2 px-4 py-2 bg-card border-b border-border text-sm font-sans text-muted-foreground">

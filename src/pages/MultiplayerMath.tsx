@@ -5,6 +5,7 @@ import { useMultiplayerMath } from '@/hooks/useMultiplayerMath';
 import { useIsMobile } from '@/hooks/use-mobile';
 import ReadyScreen from '@/components/multiplayer/ReadyScreen';
 import MultiplayerResults from '@/components/multiplayer/MultiplayerResults';
+import CountdownOverlay from '@/components/multiplayer/CountdownOverlay';
 import { slotColor } from '@/components/multiplayer/playerColors';
 import type { MultiplayerRoom } from '@/types/multiplayer';
 import { cn } from '@/lib/utils';
@@ -49,33 +50,6 @@ function BuzzerOverlay({ nickname, question, answer, onDone }: BuzzerOverlayProp
           </p>
         </div>
       </div>
-    </div>
-  );
-}
-
-// ─── Countdown overlay ────────────────────────────────────────────────────────
-
-function CountdownOverlay({ onDone }: { onDone: () => void }) {
-  const onDoneRef = useRef(onDone);
-  onDoneRef.current = onDone;
-
-  const [count, setCount] = useState(3);
-
-  useEffect(() => {
-    const t1 = setTimeout(() => setCount(2), 900);
-    const t2 = setTimeout(() => setCount(1), 1800);
-    const t3 = setTimeout(() => onDoneRef.current(), 2700);
-    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
-  }, []); // intentionally empty
-
-  return (
-    <div className="fixed inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-background/85 backdrop-blur-md">
-      <p className="font-mono text-xs text-muted-foreground tracking-widest uppercase">
-        Next question in
-      </p>
-      <p className="font-pixel text-8xl text-primary animate-pulse-glow leading-none">
-        {count}
-      </p>
     </div>
   );
 }
@@ -282,7 +256,7 @@ export default function MultiplayerMath({ room }: { room: MultiplayerRoom }) {
 
       {/* Countdown overlay — shown after buzzer dismisses */}
       {countdownActive && (
-        <CountdownOverlay onDone={dismissCountdown} />
+        <CountdownOverlay label="Next question in" onDone={dismissCountdown} />
       )}
 
       {/* Mobile warning */}

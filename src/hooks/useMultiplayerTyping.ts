@@ -32,7 +32,7 @@ export interface PlayerProgress {
 }
 
 export interface UseMultiplayerTypingReturn {
-  phase: 'ready' | 'active' | 'done';
+  phase: 'ready' | 'countdown' | 'active' | 'done';
   mode: TypingMode;
   language: CodeLanguage | null;
   words: string[];
@@ -50,6 +50,7 @@ export interface UseMultiplayerTypingReturn {
   participants: MultiplayerParticipant[];
   readyNicknames: string[];
   markReady: () => void;
+  startRace: () => void;
   handleEnglishInput: (raw: string) => void;
   handleCodeKey: (key: string) => boolean;
 }
@@ -85,7 +86,7 @@ export function useMultiplayerTyping(room: MultiplayerRoom): UseMultiplayerTypin
 
   const [ownParticipant, setOwnParticipant] = useState<MultiplayerParticipant | null>(null);
   const [participants, setParticipants] = useState<MultiplayerParticipant[]>([]);
-  const [phase, setPhase] = useState<'ready' | 'active' | 'done'>('ready');
+  const [phase, setPhase] = useState<'ready' | 'countdown' | 'active' | 'done'>('ready');
   const [wordIdx, setWordIdx] = useState(0);
   const [typedChars, setTypedChars] = useState('');
   const [charIdx, setCharIdx] = useState(0);
@@ -125,7 +126,7 @@ export function useMultiplayerTyping(room: MultiplayerRoom): UseMultiplayerTypin
     if (total === 0) return;
     if (readyNicknamesRef.current.size >= total) {
       broadcast({ type: 'game_begin' });
-      setPhase('active');
+      setPhase('countdown');
     }
   }, [broadcast]);
 
@@ -168,6 +169,12 @@ export function useMultiplayerTyping(room: MultiplayerRoom): UseMultiplayerTypin
     broadcast({ type: 'player_ready', nickname });
     triggerStartIfAllReadyRef.current();
   }, [broadcast]);
+
+  // Called when the local 3-2-1 overlay finishes. Starting the clock here (rather
+  // than at game_begin) keeps the countdown out of everyone's WPM and time limit.
+  const startRace = useCallback(() => {
+    setPhase(p => (p === 'countdown' ? 'active' : p));
+  }, []);
 
   // ── Rankings & persistence ────────────────────────────────────────────────────
 
@@ -288,7 +295,7 @@ export function useMultiplayerTyping(room: MultiplayerRoom): UseMultiplayerTypin
       }
 
       if (event.type === 'game_begin') {
-        if (!isHostRef.current) setPhase('active');
+        if (!isHostRef.current) setPhase('countdown');
       }
 
       if (event.type === 'progress_update') {
@@ -485,6 +492,7 @@ export function useMultiplayerTyping(room: MultiplayerRoom): UseMultiplayerTypin
     participants,
     readyNicknames,
     markReady,
+    startRace,
     handleEnglishInput,
     handleCodeKey,
   };
