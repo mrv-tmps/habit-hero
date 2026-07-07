@@ -4,6 +4,23 @@ Chronological log of dev sessions. Latest on top.
 
 ---
 
+## Session 4 — 2026-07-07
+**Goal:** Solo code typing mode (brief: `.claude/sessions/session-4-code-typing-mode.md`)
+
+### Work done
+- `src/data/codeSnippets.ts`: expanded from the Session 3 starter pool to 6 snippets per language (JS/Python/C) — FizzBuzz, Fibonacci, binary search, palindrome check, bubble sort, array max/sum, factorial, plus the original debounce/unique/word_count/swap/strlen
+- `src/pages/TypingTest.tsx`: added a words | code segmented control in the controls bar, with js/py/c language pills shown in code mode; code display reuses the multiplayer conventions (`whitespace-pre font-mono`, language badge, per-char coloring, blinking caret); Enter types the expected newline, Backspace corrects mistakes; WPM uses `calculateCharWpm`; switching mode/language/timer resets with a freshly randomized snippet; test finishes early once the snippet is fully typed
+
+### Key decisions
+- Kept the live `CodeSnippet` shape (`{language, title, code}`) rather than the session brief's `{id, label}` — `typingWordSets.ts` and multiplayer already consume it, so the expanded pool now feeds both solo and multiplayer code races
+- Reused multiplayer's code-display classes/behavior so solo and multiplayer code mode feel identical
+- Language pills instead of a shadcn `Select`, consistent with the existing timer pills
+
+### Follow-ups
+- `.claude/launch.json` declares port 8082 but Vite serves on 8080 — config mismatch to fix
+
+---
+
 ## Multiplayer Session 3 — 2026-07-06
 **Goal:** Multiplayer typing race (brief: `.claude/sessions/session-3-multiplayer-typing.md`)
 

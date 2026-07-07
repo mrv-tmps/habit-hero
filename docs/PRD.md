@@ -1,6 +1,6 @@
 # Habit Quest — Product Requirements Document
 
-**Last updated:** 2026-07-07
+**Last updated:** 2026-07-07 (solo code typing mode)
 **Status:** Active development — pre-public launch
 
 ---
@@ -63,6 +63,7 @@ Key differentiating choices:
 | **Multiplayer rooms** | 4-char room codes, up to 8 players, no auth required (guests pick a nickname; identity via `participant_token` in `sessionStorage`). Create/join lobby with live presence, host controls, Supabase Realtime broadcast channel per room. |
 | **Multiplayer Math Buzzer** | All players see the same seeded question; first correct answer claims the point (host-arbitrated). Buzzer overlay + 3-2-1 countdown between questions. In-app numeric keypad on mobile. Rankings with position XP multipliers (×1.5 / ×1.25). |
 | **Multiplayer Typing Race** | TypeRacer-style: all players type the same seeded word set (or code snippet — JS/Python/C) with live per-player progress bars and WPM. Strict advance (a word must be correct to progress). XP = `floor(WPM / 10)` × position multiplier, capped at 10. |
+| **Code typing mode (solo)** | Solo Typing Test has a words / code toggle with JS/Python/C language pills. 6 curated snippets per language (`codeSnippets.ts`, shared with multiplayer). Enter types the newline, Backspace corrects mistakes, test finishes early once the snippet is fully typed. |
 
 ### In progress / next
 
@@ -70,7 +71,6 @@ Key differentiating choices:
 |---|---|
 | **Math Challenge history page** | Personal session history at `/games/math/history`, mirroring the typing history page. |
 | **Personal bests** | Per-game best score/WPM/accuracy displayed on the game page or hub card. |
-| **Code typing mode (solo)** | Extend the solo Typing Test with code-snippet mode; expand `codeSnippets.ts` pool (Session 4). |
 | **Coin Rush minigame** | 2D arena coin-collection game, solo + multiplayer (Sessions 5–7). Design spec in `design-system/habit-quest/pages/coin-rush.md`. |
 
 ### Planned (post-minigames)
