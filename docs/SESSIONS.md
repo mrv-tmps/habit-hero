@@ -4,6 +4,63 @@ Chronological log of dev sessions. Latest on top.
 
 ---
 
+## Multiplayer Session 3 — 2026-07-06
+**Goal:** Multiplayer typing race (brief: `.claude/sessions/session-3-multiplayer-typing.md`)
+
+### Work done
+- `src/lib/typingRender.ts`: extracted pure WPM/accuracy/char-status helpers from solo TypingTest (no behavior change)
+- `src/components/multiplayer/`: extracted shared `ReadyScreen` + `MultiplayerResults` + `playerColors` from MultiplayerMath; math now passes `title`/`subtitle`/`scoreUnit` props
+- `src/lib/typingWordSets.ts`: seeded (mulberry32) word set + code snippet selection — same seed, same text on every client
+- `src/data/codeSnippets.ts`: starter pool (2 snippets × JS/Python/C); Session 4 expands
+- `src/hooks/useMultiplayerTyping.ts`: ready-gate → active → done, 250ms throttled progress broadcasts, host-authoritative end, position XP multipliers, daily-cap-aware save
+- `src/pages/MultiplayerTyping.tsx`: sticky per-player progress panel (player color tokens, own row pinned), solo-style word rendering, `whitespace-pre` code mode with language badge
+- `src/pages/CreateRoom.tsx`: Mode (English/Code) + conditional Language selects for typing rooms
+- Migration `20260626000001_add_typing_mode_columns.sql`: `typing_mode` + `code_language` on `multiplayer_rooms`
+- Earlier same day: fixed solo typing test input on mobile IME keyboards (onChange instead of keydown)
+
+### Key decisions
+- Strict advance: a word (or char in code mode) must be typed correctly to progress — prevents space-spamming the progress bar
+- Multiplayer typing XP = `floor(WPM / 10)` × position multiplier (remote players' accuracy is not broadcast)
+- Results/ready screens are shared components per design spec §6, not per-game copies
+
+### Follow-ups
+- `supabase db push` to the hosted project required before typing rooms can be created (columns missing remotely)
+- Two-browser realtime race smoke test pending
+
+---
+
+## Multiplayer Session 2 — 2026-06-26
+**Goal:** Multiplayer math buzzer (brief: `.claude/sessions/session-2-multiplayer-math.md`)
+
+### Work done
+- `src/lib/mathQuestions.ts`: seeded question generation (easy/medium/hard) via mulberry32 PRNG
+- `src/hooks/useMultiplayerMath.ts`: ready-gate, host-arbitrated answer claims, live scoreboard, rankings + XP, `game_sessions` save with daily cap
+- `src/pages/MultiplayerMath.tsx`: buzzer overlay ("X buzzed in first"), 3-2-1 countdown between questions, sticky top bar, scoreboard strip, in-app numeric keypad on mobile (iOS Safari can't programmatically open the native keyboard)
+- Follow-up fixes: equalized buzzer input timing and hid the next problem during the transition overlay
+
+### Key decisions
+- Host-authoritative: only the host advances questions and ends the game; clients broadcast `answer_claimed`
+- In-app keypad renders identically on Android/iOS so the buzzer race stays fair
+
+---
+
+## Multiplayer Session 1 — 2026-06-26
+**Goal:** Multiplayer infrastructure (brief: `.claude/sessions/session-1-multiplayer-infrastructure.md`)
+
+### Work done
+- Migration `20260626000000_add_multiplayer_tables.sql`: `multiplayer_rooms` + `multiplayer_participants` with RLS
+- `src/types/multiplayer.ts`: room/participant/event/ranking types
+- `src/hooks/useMultiplayerRoom.ts`: create/join/leave, host promotion, `finalizeResults`
+- `src/hooks/useRealtimeRoom.ts`: Supabase Realtime channel wrapper (broadcast + presence)
+- `src/pages/CreateRoom.tsx`, `RoomLobby.tsx`, `MultiplayerGame.tsx` (game router), player color tokens + `data-mode="multiplayer"` CSS
+- `vercel.json` SPA rewrite fix for 404s on refresh
+
+### Key decisions
+- No auth required for multiplayer — guests get a `participant_token` UUID in `sessionStorage`, used for RLS
+- One Realtime channel per room (`room:<code>`); all game events go through a single `mp_event` broadcast
+
+---
+
 ## Session 4 — 2026-06-19
 **Goal:** Phase 3 — Typing test session history / personal bests screen
 
