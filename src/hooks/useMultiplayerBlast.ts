@@ -16,6 +16,8 @@ import {
   MP_XP_MULTIPLIER_DEFAULT,
   BA_COUNTDOWN_MS,
   BA_SKIP_GRACE_MS,
+  MP_READY_RESYNC_MS,
+  MP_READY_RESYNC_MAX,
 } from '@/config/constants';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -87,18 +89,22 @@ export function useMultiplayerBlast(room: MultiplayerRoom): UseMultiplayerBlastR
   const engineRef = useRef(engine);
   engineRef.current = engine;
 
+  const hasBegunRef = useRef(false);
+
   // Host: begin when everyone is ready
   const triggerStartIfAllReady = useCallback(() => {
-    if (!isHostRef.current || mpPhase !== 'ready') return;
+    if (!isHostRef.current) return;
     const total = participantsRef.current.length;
     if (total === 0) return;
-    if (readyNicknamesRef.current.size >= total) {
-      const at = Date.now() + BA_COUNTDOWN_MS;
-      broadcast({ type: 'game_begin' });
-      setStartAt(at);
-      setMpPhase('active');
-    }
-  }, [broadcast, mpPhase]);
+    if (readyNicknamesRef.current.size < total) return;
+    // Re-broadcasting game_begin is safe and recovers stragglers who missed the
+    // first one; only start our own countdown once.
+    broadcast({ type: 'game_begin' });
+    if (hasBegunRef.current) return;
+    hasBegunRef.current = true;
+    setStartAt(Date.now() + BA_COUNTDOWN_MS);
+    setMpPhase('active');
+  }, [broadcast]);
 
   const triggerStartIfAllReadyRef = useRef(triggerStartIfAllReady);
   useEffect(() => { triggerStartIfAllReadyRef.current = triggerStartIfAllReady; }, [triggerStartIfAllReady]);
@@ -129,6 +135,22 @@ export function useMultiplayerBlast(room: MultiplayerRoom): UseMultiplayerBlastR
     broadcast({ type: 'player_ready', nickname });
     triggerStartIfAllReadyRef.current();
   }, [broadcast]);
+
+  // game_begin is a one-shot broadcast; if it is dropped, a readied player is
+  // stranded on the ready screen. Keep re-announcing until the battle starts —
+  // the host re-emits game_begin on each player_ready it receives.
+  useEffect(() => {
+    if (mpPhase !== 'ready') return;
+    const nickname = ownParticipant?.nickname;
+    if (!nickname || !readyNicknames.includes(nickname)) return;
+    let attempts = 0;
+    const id = setInterval(() => {
+      attempts += 1;
+      broadcast({ type: 'player_ready', nickname });
+      if (attempts >= MP_READY_RESYNC_MAX) clearInterval(id);
+    }, MP_READY_RESYNC_MS);
+    return () => clearInterval(id);
+  }, [mpPhase, ownParticipant, readyNicknames, broadcast]);
 
   const buildRankings = useCallback((): RankedResult[] => {
     const units = engineRef.current.unitsView;
@@ -225,7 +247,10 @@ export function useMultiplayerBlast(room: MultiplayerRoom): UseMultiplayerBlastR
       }
 
       if (event.type === 'game_begin') {
-        if (!isHostRef.current) {
+        // Guard so a repeated game_begin (re-sent to recover stragglers) cannot
+        // restart a client that already began.
+        if (!isHostRef.current && !hasBegunRef.current) {
+          hasBegunRef.current = true;
           setStartAt(Date.now() + BA_COUNTDOWN_MS);
           setMpPhase('active');
         }

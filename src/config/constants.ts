@@ -19,6 +19,10 @@ export const MP_TYPING_MODE = ['english', 'code'] as const;
 export const MP_CODE_LANGUAGES = ['javascript', 'python', 'c'] as const;
 export const MP_TYPING_WORD_COUNT = 60;
 export const MP_RESULT_DISPLAY_MS = 8000;
+// A readied client re-announces itself on this interval until the game begins,
+// recovering from a dropped one-shot game_begin broadcast; capped to bound traffic.
+export const MP_READY_RESYNC_MS = 1500;
+export const MP_READY_RESYNC_MAX = 20;
 
 // Blast Arena (turn-based artillery)
 export const BA_CANVAS_W = 320;

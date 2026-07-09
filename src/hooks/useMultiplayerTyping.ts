@@ -21,6 +21,8 @@ import {
   MP_XP_MULTIPLIER_DEFAULT,
   MP_PROGRESS_BROADCAST_MS,
   MP_TYPING_WORD_COUNT,
+  MP_READY_RESYNC_MS,
+  MP_READY_RESYNC_MAX,
 } from '@/config/constants';
 
 export interface PlayerProgress {
@@ -119,15 +121,20 @@ export function useMultiplayerTyping(room: MultiplayerRoom): UseMultiplayerTypin
     setPlayerProgress({ ...updated });
   }, []);
 
+  const hasBegunRef = useRef(false);
+
   // Host: begin race once every participant has pressed ready
   const triggerStartIfAllReady = useCallback(() => {
     if (!isHostRef.current) return;
     const total = participantsRef.current.length;
     if (total === 0) return;
-    if (readyNicknamesRef.current.size >= total) {
-      broadcast({ type: 'game_begin' });
-      setPhase('countdown');
-    }
+    if (readyNicknamesRef.current.size < total) return;
+    // Re-broadcasting game_begin is safe and recovers stragglers who missed the
+    // first one; only transition our own phase once.
+    broadcast({ type: 'game_begin' });
+    if (hasBegunRef.current) return;
+    hasBegunRef.current = true;
+    setPhase('countdown');
   }, [broadcast]);
 
   const triggerStartIfAllReadyRef = useRef(triggerStartIfAllReady);
@@ -169,6 +176,22 @@ export function useMultiplayerTyping(room: MultiplayerRoom): UseMultiplayerTypin
     broadcast({ type: 'player_ready', nickname });
     triggerStartIfAllReadyRef.current();
   }, [broadcast]);
+
+  // game_begin is a one-shot broadcast; if it is dropped, a readied player is
+  // stranded on the ready screen. Keep re-announcing until the race starts — the
+  // host re-emits game_begin on each player_ready it receives.
+  useEffect(() => {
+    if (phase !== 'ready') return;
+    const nickname = ownParticipant?.nickname;
+    if (!nickname || !readyNicknames.includes(nickname)) return;
+    let attempts = 0;
+    const id = setInterval(() => {
+      attempts += 1;
+      broadcast({ type: 'player_ready', nickname });
+      if (attempts >= MP_READY_RESYNC_MAX) clearInterval(id);
+    }, MP_READY_RESYNC_MS);
+    return () => clearInterval(id);
+  }, [phase, ownParticipant, readyNicknames, broadcast]);
 
   // Called when the local 3-2-1 overlay finishes. Starting the clock here (rather
   // than at game_begin) keeps the countdown out of everyone's WPM and time limit.
@@ -295,7 +318,12 @@ export function useMultiplayerTyping(room: MultiplayerRoom): UseMultiplayerTypin
       }
 
       if (event.type === 'game_begin') {
-        if (!isHostRef.current) setPhase('countdown');
+        // Guard so a repeated game_begin (re-sent to recover stragglers) cannot
+        // revert a client that already advanced past the countdown.
+        if (!isHostRef.current && !hasBegunRef.current) {
+          hasBegunRef.current = true;
+          setPhase('countdown');
+        }
       }
 
       if (event.type === 'progress_update') {

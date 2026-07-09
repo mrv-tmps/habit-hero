@@ -12,6 +12,8 @@ import {
   MP_XP_MULTIPLIER_1ST,
   MP_XP_MULTIPLIER_2ND,
   MP_XP_MULTIPLIER_DEFAULT,
+  MP_READY_RESYNC_MS,
+  MP_READY_RESYNC_MAX,
 } from '@/config/constants';
 
 export interface ClaimerFlash {
@@ -71,6 +73,7 @@ export function useMultiplayerMath(room: MultiplayerRoom): UseMultiplayerMathRet
   const currentQuestionIdxRef = useRef(0);
   const processedClaimRef = useRef(-1);
   const hasEndedRef = useRef(false);
+  const hasBegunRef = useRef(false);
   const participantsRef = useRef<MultiplayerParticipant[]>([]);
   const questionsRef = useRef(questions);
   const readyNicknamesRef = useRef<Set<string>>(new Set());
@@ -83,10 +86,13 @@ export function useMultiplayerMath(room: MultiplayerRoom): UseMultiplayerMathRet
     if (!isHostRef.current) return;
     const total = participantsRef.current.length;
     if (total === 0) return;
-    if (readyNicknamesRef.current.size >= total) {
-      broadcast({ type: 'game_begin' });
-      setPhase('active');
-    }
+    if (readyNicknamesRef.current.size < total) return;
+    // Re-broadcasting game_begin is safe and recovers stragglers who missed the
+    // first one; only transition our own phase once.
+    broadcast({ type: 'game_begin' });
+    if (hasBegunRef.current) return;
+    hasBegunRef.current = true;
+    setPhase('active');
   }, [broadcast]);
 
   const triggerStartIfAllReadyRef = useRef(triggerStartIfAllReady);
@@ -126,6 +132,22 @@ export function useMultiplayerMath(room: MultiplayerRoom): UseMultiplayerMathRet
     broadcast({ type: 'player_ready', nickname });
     triggerStartIfAllReadyRef.current();
   }, [broadcast]);
+
+  // game_begin is a one-shot broadcast; if it is dropped, a readied player is
+  // stranded on the ready screen. Keep re-announcing until the game starts — the
+  // host re-emits game_begin on each player_ready it receives.
+  useEffect(() => {
+    if (phase !== 'ready') return;
+    const nickname = ownParticipant?.nickname;
+    if (!nickname || !readyNicknames.includes(nickname)) return;
+    let attempts = 0;
+    const id = setInterval(() => {
+      attempts += 1;
+      broadcast({ type: 'player_ready', nickname });
+      if (attempts >= MP_READY_RESYNC_MAX) clearInterval(id);
+    }, MP_READY_RESYNC_MS);
+    return () => clearInterval(id);
+  }, [phase, ownParticipant, readyNicknames, broadcast]);
 
   const buildRankings = useCallback((): RankedResult[] => {
     const sorted = Object.entries(playerScoresRef.current)
@@ -221,8 +243,10 @@ export function useMultiplayerMath(room: MultiplayerRoom): UseMultiplayerMathRet
       }
 
       if (event.type === 'game_begin') {
-        // Host already transitioned in triggerStartIfAllReady
-        if (!isHostRef.current) {
+        // Host already transitioned in triggerStartIfAllReady. Guard so a repeated
+        // game_begin (re-sent to recover stragglers) cannot revert a started client.
+        if (!isHostRef.current && !hasBegunRef.current) {
+          hasBegunRef.current = true;
           setPhase('active');
         }
       }
