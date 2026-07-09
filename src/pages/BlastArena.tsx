@@ -126,9 +126,10 @@ function BlastMatch({ seed, startAt, difficulty, characterName, onEnd }: MatchPr
 
   const turnLabel =
     phase === 'projectile' ? '...' : isLocalTurn ? 'your turn' : `${activeUnit?.nickname ?? ''}'s turn`;
+  const bannerText = isLocalTurn ? 'your turn' : `${activeUnit?.nickname ?? ''}'s turn`;
 
   return (
-    <div className="relative w-full flex flex-col gap-3">
+    <div className="relative w-full flex flex-col gap-2">
       <BlastHud
         turnLabel={turnLabel}
         isLocalTurn={isLocalTurn}
@@ -146,10 +147,9 @@ function BlastMatch({ seed, startAt, difficulty, characterName, onEnd }: MatchPr
         commitShot={commitShot}
         maxSpeed={BA_WEAPONS[selectedWeapon].maxSpeed}
         canAim={isLocalTurn}
+        banner={phase === 'aiming' ? { text: bannerText, key: turnIndex } : null}
+        hint="drag to aim, release to fire · arrows to walk · 1/2/3 weapons"
       />
-      <p className="text-center text-xs font-mono text-focused-dim">
-        drag to aim, release to fire · arrows to walk · 1/2/3 weapons
-      </p>
 
       {phase === 'countdown' && (
         <div className="absolute inset-0 z-30 flex items-center justify-center">
@@ -312,9 +312,18 @@ export default function BlastArena() {
 
       <div
         data-mode={pageState === 'playing' ? 'arcade' : undefined}
-        className="flex-1 flex flex-col items-center px-4 sm:px-8 pt-10 sm:pt-14 pb-8"
+        className={cn(
+          'flex-1 flex flex-col items-center px-3 sm:px-8',
+          // Tighter chrome while playing so the battlefield gets the vertical space
+          pageState === 'playing' ? 'pt-3 sm:pt-5 pb-4' : 'pt-10 sm:pt-14 pb-8',
+        )}
       >
-        <div className="w-full max-w-[760px] flex flex-col gap-3">
+        <div
+          className={cn(
+            'w-full flex flex-col gap-3',
+            pageState === 'playing' ? 'max-w-[1100px] gap-2' : 'max-w-[760px]',
+          )}
+        >
           <button
             onClick={() => navigate('/games')}
             onMouseDown={e => e.preventDefault()}

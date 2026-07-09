@@ -11,6 +11,7 @@ import {
   BA_UNIT_H,
   BA_WALK_STAMINA_PX,
   BA_WEAPONS,
+  BA_WIND_MAX,
   type BlastWeaponId,
 } from '@/config/constants';
 import { generateTerrain, carveCircle, isSolid, spawnPositions } from '@/lib/blastTerrain';
@@ -24,6 +25,42 @@ import {
   type UnitState,
   type SimFrame,
 } from '@/lib/blastSim';
+import {
+  buildUnitSheet,
+  buildProjectileSprites,
+  drawPixelText,
+  UNIT_FRAME,
+  UNIT_SPR_W,
+  UNIT_SPR_H,
+  ROCKET_W,
+  ROCKET_H,
+  GRENADE_W,
+  GRENADE_H,
+  BOOT_W,
+  BOOT_H,
+  TOMBSTONE_W,
+  TOMBSTONE_H,
+  type ProjectileSprites,
+  type SpriteColors,
+} from '@/lib/blastSprites';
+import {
+  createFxState,
+  spawnExplosionFx,
+  spawnBootImpactFx,
+  spawnMuzzleFx,
+  spawnTrailSmoke,
+  spawnWalkDust,
+  spawnKoFx,
+  spawnDamageNumber,
+  fxShakeOffset,
+  drawFxAmbient,
+  drawFxParticles,
+  drawFxScreenFlash,
+  pruneNumbers,
+  numberProgress,
+  type BlastFxState,
+  type FxPalette,
+} from '@/lib/blastFx';
 
 export type BlastPhase = 'countdown' | 'aiming' | 'projectile' | 'done';
 
@@ -91,6 +128,8 @@ interface Playback {
   shooterId: string;
   turnIndex: number;
   startedAt: number;
+  // Renderer bookkeeping: last frame that emitted a smoke-trail particle
+  trailFrame: number;
 }
 
 export function useBlastEngine({
@@ -130,6 +169,14 @@ export function useBlastEngine({
   const paletteRef = useRef<Record<string, string>>({});
   const rafRef = useRef(0);
 
+  // ── Cosmetic-only refs (sprites, particles, per-unit animation) — never feed the sim
+  const fxRef = useRef<BlastFxState | null>(null);
+  const unitSheetsRef = useRef<Record<number, HTMLCanvasElement>>({});
+  const flashSheetRef = useRef<HTMLCanvasElement | null>(null);
+  const projSpritesRef = useRef<ProjectileSprites | null>(null);
+  const unitAnimRef = useRef<Record<string, { displayHp: number; hitUntil: number }>>({});
+  const recoilRef = useRef<{ id: string; until: number; dir: number } | null>(null);
+
   // ── React state (discrete events only)
   const [phase, setPhaseState] = useState<BlastPhase>('countdown');
   const [countdown, setCountdown] = useState(3);
@@ -151,7 +198,8 @@ export function useBlastEngine({
     setUnitsView(unitsRef.current.map(u => ({ ...u })));
   }, []);
 
-  // ── Terrain offscreen canvas
+  // ── Terrain offscreen canvas: base fill + dirt texture + edge/grass outlines.
+  // Runs only on init and after carves, so the full-pixel scans are cheap in practice.
   const repaintTerrain = useCallback(() => {
     let off = terrainCanvasRef.current;
     if (!off) {
@@ -163,8 +211,12 @@ export function useBlastEngine({
     const ctx = off.getContext('2d');
     if (!ctx) return;
     const terrain = terrainRef.current;
+    const pal = paletteRef.current;
+    const solidAt = (x: number, y: number) =>
+      x >= 0 && x < BA_CANVAS_W && y >= 0 && y < BA_CANVAS_H && terrain[y * BA_CANVAS_W + x] === 1;
+
     ctx.clearRect(0, 0, BA_CANVAS_W, BA_CANVAS_H);
-    ctx.fillStyle = paletteRef.current.terrain ?? '#000';
+    ctx.fillStyle = pal.terrain ?? '#000';
     ctx.beginPath();
     for (let y = 0; y < BA_CANVAS_H; y++) {
       let runStart = -1;
@@ -174,6 +226,44 @@ export function useBlastEngine({
         if (!solid && runStart >= 0) {
           ctx.rect(runStart, y, x - runStart, 1);
           runStart = -1;
+        }
+      }
+    }
+    ctx.fill();
+
+    // Dirt speckle: position-hashed so texture is stable across repaints
+    ctx.fillStyle = pal.dirt ?? pal.terrain ?? '#000';
+    ctx.beginPath();
+    for (let y = 0; y < BA_CANVAS_H; y++) {
+      for (let x = 0; x < BA_CANVAS_W; x++) {
+        if (terrain[y * BA_CANVAS_W + x] !== 1) continue;
+        const h = (Math.imul(x, 2654435761) ^ Math.imul(y, 40503)) >>> 0;
+        if (h % 97 < 8) ctx.rect(x, y, 1, 1);
+      }
+    }
+    ctx.fill();
+
+    // Crater/side outline (darker), then grass on top-exposed surfaces
+    ctx.fillStyle = pal.terrainEdge ?? pal.terrain ?? '#000';
+    ctx.beginPath();
+    for (let y = 0; y < BA_CANVAS_H; y++) {
+      for (let x = 0; x < BA_CANVAS_W; x++) {
+        if (terrain[y * BA_CANVAS_W + x] !== 1) continue;
+        if (solidAt(x, y - 1) && (!solidAt(x - 1, y) || !solidAt(x + 1, y) || !solidAt(x, y + 1))) {
+          ctx.rect(x, y, 1, 1);
+        }
+      }
+    }
+    ctx.fill();
+
+    ctx.fillStyle = pal.grass ?? pal.terrain ?? '#000';
+    ctx.beginPath();
+    for (let y = 0; y < BA_CANVAS_H; y++) {
+      for (let x = 0; x < BA_CANVAS_W; x++) {
+        if (terrain[y * BA_CANVAS_W + x] !== 1) continue;
+        if (!solidAt(x, y - 1)) {
+          ctx.rect(x, y, 1, 1);
+          if (solidAt(x, y + 1) && !solidAt(x, y - 2)) ctx.rect(x, y + 1, 1, 1);
         }
       }
     }
@@ -194,6 +284,9 @@ export function useBlastEngine({
       facing: (i % 2 === 0 ? 1 : -1) as 1 | -1,
     }));
     damageDealtRef.current = Object.fromEntries(unitInits.map(u => [u.id, 0]));
+    unitAnimRef.current = Object.fromEntries(
+      unitInits.map(u => [u.id, { displayHp: BA_UNIT_HP, hitUntil: 0 }]),
+    );
     lastCarvedTurnRef.current = -1;
     repaintTerrain();
     syncUnits();
@@ -205,18 +298,82 @@ export function useBlastEngine({
     const palette: Record<string, string> = {
       sky: readToken(css, '--ba-sky'),
       terrain: readToken(css, '--ba-terrain'),
+      terrainEdge: readToken(css, '--ba-terrain-edge'),
+      grass: readToken(css, '--ba-grass'),
+      dirt: readToken(css, '--ba-dirt'),
       explosion: readToken(css, '--ba-explosion'),
       trajectory: readToken(css, '--ba-trajectory'),
+      smoke: readToken(css, '--ba-smoke'),
+      cloud: readToken(css, '--ba-cloud'),
+      unitOutline: readToken(css, '--ba-unit-outline'),
       foreground: readToken(css, '--foreground'),
       muted: readToken(css, '--muted'),
+      primary: readToken(css, '--primary'),
       destructive: readToken(css, '--destructive'),
     };
     for (let i = 1; i <= 8; i++) {
       palette[`player${i}`] = readToken(css, `--player-${i}`);
     }
     paletteRef.current = palette;
+
+    const spriteColors: SpriteColors = {
+      outline: palette.unitOutline,
+      eyeWhite: palette.foreground,
+      rocketBody: palette.destructive,
+      rocketNose: palette.trajectory,
+      fin: palette.muted,
+      grenadeShell: palette.grass,
+      bootLeather: palette.primary,
+      stone: palette.muted,
+    };
+    const sheets: Record<number, HTMLCanvasElement> = {};
+    for (let i = 1; i <= 8; i++) {
+      sheets[i] = buildUnitSheet(palette[`player${i}`], spriteColors);
+    }
+    unitSheetsRef.current = sheets;
+    // All-white silhouette reused for the hit flash overlay
+    flashSheetRef.current = buildUnitSheet(palette.foreground, {
+      ...spriteColors,
+      outline: palette.foreground,
+      eyeWhite: palette.foreground,
+    });
+    projSpritesRef.current = buildProjectileSprites(spriteColors);
     repaintTerrain();
   }, [repaintTerrain]);
+
+  // ── FX state honors prefers-reduced-motion, live
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    fxRef.current = createFxState(mq.matches);
+    const onChange = (e: MediaQueryListEvent) => {
+      if (fxRef.current) fxRef.current.reducedMotion = e.matches;
+    };
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
+  const getFxPal = useCallback((): FxPalette => {
+    const pal = paletteRef.current;
+    return {
+      explosion: pal.explosion,
+      smoke: pal.smoke,
+      dirt: pal.dirt,
+      terrain: pal.terrain,
+      cloud: pal.cloud,
+      trajectory: pal.trajectory,
+    };
+  }, []);
+
+  // Cosmetic damage feedback: floating number, hit flash, KO poof
+  const fxDamage = useCallback((unit: UnitState, dmg: number, killed: boolean) => {
+    const fx = fxRef.current;
+    if (!fx || dmg <= 0) return;
+    const now = Date.now();
+    spawnDamageNumber(fx, unit.x, unit.y - UNIT_SPR_H - 8, dmg, now);
+    const anim = unitAnimRef.current[unit.id];
+    if (anim) anim.hitUntil = now + 220;
+    if (killed) spawnKoFx(fx, getFxPal(), unit.x, unit.y, now);
+  }, [getFxPal]);
 
   // ── Turn management
   const startTurnAt = useCallback((idx: number, turnIdx: number) => {
@@ -261,7 +418,10 @@ export function useBlastEngine({
     // Sudden death: after the round budget, every turn start drains all units
     if (Math.floor(nextTurn / units.length) >= BA_MAX_ROUNDS) {
       for (const u of units) {
-        if (u.hp > 0) u.hp = Math.max(0, u.hp - BA_SUDDEN_DEATH_DRAIN);
+        if (u.hp > 0) {
+          u.hp = Math.max(0, u.hp - BA_SUDDEN_DEATH_DRAIN);
+          fxDamage(u, BA_SUDDEN_DEATH_DRAIN, u.hp <= 0);
+        }
       }
       syncUnits();
       const survivors = units.filter(u => u.hp > 0);
@@ -277,7 +437,7 @@ export function useBlastEngine({
 
     startTurnAt(nextIdx, nextTurn);
     return true;
-  }, [finishGame, startTurnAt, syncUnits]);
+  }, [finishGame, fxDamage, startTurnAt, syncUnits]);
 
   const buildResolution = useCallback((resolvedTurn: number, carve: TurnResolution['carve']): TurnResolution => ({
     resolved_turn: resolvedTurn,
@@ -310,6 +470,14 @@ export function useBlastEngine({
         r: weaponRadius,
         endsAt: Date.now() + EXPLOSION_FLASH_MS,
       };
+      const fx = fxRef.current;
+      if (fx) {
+        if (playback.weapon === 'boot') {
+          spawnBootImpactFx(fx, getFxPal(), result.explosionAt.x, result.explosionAt.y, Date.now());
+        } else {
+          spawnExplosionFx(fx, getFxPal(), result.explosionAt.x, result.explosionAt.y, weaponRadius, Date.now());
+        }
+      }
     }
     if (result.carves.length > 0 && lastCarvedTurnRef.current < resolvedTurn) {
       for (const carve of result.carves) {
@@ -323,8 +491,10 @@ export function useBlastEngine({
     for (const unit of units) {
       const dmg = result.damage[unit.id];
       if (!dmg) continue;
+      const wasAlive = unit.hp > 0;
       unit.hp = Math.max(0, unit.hp - dmg);
       if (unit.id !== shooterId) dealtToOthers += dmg;
+      fxDamage(unit, dmg, wasAlive && unit.hp <= 0);
       const kb = result.knockback[unit.id];
       if (kb && unit.hp > 0) {
         unit.x += kb.dx;
@@ -348,7 +518,7 @@ export function useBlastEngine({
       clearPendingResolution();
       hardApplyResolutionRef.current(pending);
     }
-  }, [advanceTurn, buildResolution, clearPendingResolution, repaintTerrain, syncUnits]);
+  }, [advanceTurn, buildResolution, clearPendingResolution, fxDamage, getFxPal, repaintTerrain, syncUnits]);
 
   const applyShotResultRef = useRef(applyShotResult);
   applyShotResultRef.current = applyShotResult;
@@ -364,7 +534,11 @@ export function useBlastEngine({
       repaintTerrain();
     }
     for (const unit of unitsRef.current) {
-      if (unit.id in res.hp) unit.hp = res.hp[unit.id];
+      if (unit.id in res.hp) {
+        const drop = unit.hp - res.hp[unit.id];
+        if (drop > 0) fxDamage(unit, drop, res.hp[unit.id] <= 0);
+        unit.hp = res.hp[unit.id];
+      }
       const pos = res.positions[unit.id];
       if (pos) {
         unit.x = pos.x;
@@ -379,7 +553,7 @@ export function useBlastEngine({
     }
     const nextIdx = unitsRef.current.findIndex(u => u.id === res.next_active_id);
     if (nextIdx >= 0) startTurnAt(nextIdx, res.next_turn);
-  }, [finishGame, repaintTerrain, startTurnAt, syncUnits]);
+  }, [finishGame, fxDamage, repaintTerrain, startTurnAt, syncUnits]);
 
   const hardApplyResolutionRef = useRef(hardApplyResolution);
   hardApplyResolutionRef.current = hardApplyResolution;
@@ -430,8 +604,12 @@ export function useBlastEngine({
       shooterId: shooter.id,
       turnIndex: turnIndexRef.current,
       startedAt: Date.now(),
+      trailFrame: -1,
     };
     playbackRef.current = playback;
+    // Firing recoil + muzzle puff (cosmetic)
+    recoilRef.current = { id: shooter.id, until: Date.now() + 200, dir: input.vx >= 0 ? -1 : 1 };
+    if (fxRef.current) spawnMuzzleFx(fxRef.current, getFxPal(), input.x, input.y, Date.now());
     setPhase('projectile');
 
     // Fallback: rAF is suspended in hidden tabs — state must advance regardless
@@ -442,7 +620,7 @@ export function useBlastEngine({
         applyShotResultRef.current(playback);
       }
     }, durationMs + 600);
-  }, [setPhase]);
+  }, [getFxPal, setPhase]);
 
   const commitShot = useCallback((vx: number, vy: number) => {
     const active = unitsRef.current[activeIdxRef.current];
@@ -543,6 +721,7 @@ export function useBlastEngine({
   // ── Walking (interval, not rAF — discrete steps, throttled state sync)
   useEffect(() => {
     if (phase !== 'aiming') return;
+    let stepCount = 0;
     const interval = setInterval(() => {
       const dir = walkHeldRef.current;
       if (dir === 0 || staminaRef.current <= 0) return;
@@ -565,11 +744,17 @@ export function useBlastEngine({
       unit.facing = dir;
       staminaRef.current = Math.max(0, staminaRef.current - WALK_STEP_PX);
       setStaminaLeft(Math.round(staminaRef.current));
+      // Occasional heel-dust puff while walking
+      if (++stepCount % 5 === 0 && fxRef.current) {
+        spawnWalkDust(fxRef.current, getFxPal(), unit.x - dir * 3, unit.y, Date.now());
+      }
     }, WALK_TICK_MS);
     return () => clearInterval(interval);
-  }, [phase, turnIndex]);
+  }, [phase, turnIndex, getFxPal]);
 
-  // ── Renderer (rAF; reads refs only — state application never depends on this loop)
+  // ── Renderer (rAF; reads refs only — state application never depends on this loop).
+  // Everything here is presentation: sprites, particles, shake. Sim state is applied
+  // by applyShotResult/hardApplyResolution regardless of what this loop draws.
   useEffect(() => {
     const draw = () => {
       rafRef.current = requestAnimationFrame(draw);
@@ -577,35 +762,120 @@ export function useBlastEngine({
       const ctx = canvas?.getContext('2d');
       if (!canvas || !ctx) return;
       const pal = paletteRef.current;
+      const fx = fxRef.current;
+      const now = Date.now();
 
       ctx.imageSmoothingEnabled = false;
       ctx.fillStyle = pal.sky;
       ctx.fillRect(0, 0, BA_CANVAS_W, BA_CANVAS_H);
+
+      if (fx) {
+        drawFxAmbient(ctx, fx, {
+          explosion: pal.explosion, smoke: pal.smoke, dirt: pal.dirt,
+          terrain: pal.terrain, cloud: pal.cloud, trajectory: pal.trajectory,
+        }, windRef.current, BA_WIND_MAX, now);
+      }
+
+      // Camera shake wraps everything world-space; HUD lives outside the canvas
+      const shake = fx ? fxShakeOffset(fx, now) : { x: 0, y: 0 };
+      ctx.save();
+      ctx.translate(Math.round(shake.x), Math.round(shake.y));
+
       if (terrainCanvasRef.current) ctx.drawImage(terrainCanvasRef.current, 0, 0);
+
+      const sprites = projSpritesRef.current;
+
+      // Tombstones where units fell
+      if (sprites) {
+        for (const unit of unitsRef.current) {
+          if (unit.hp > 0) continue;
+          ctx.drawImage(
+            sprites.tombstone,
+            Math.round(unit.x - TOMBSTONE_W / 2),
+            Math.round(unit.y - TOMBSTONE_H),
+          );
+        }
+      }
 
       // Units
       const activeIdx = activeIdxRef.current;
+      const playback = playbackRef.current;
       unitsRef.current.forEach((unit, i) => {
         if (unit.hp <= 0) return;
-        const px = Math.round(unit.x - BA_UNIT_W / 2);
-        const py = Math.round(unit.y - BA_UNIT_H);
-        ctx.fillStyle = pal[`player${unit.colorIndex}`] ?? pal.foreground;
-        ctx.fillRect(px, py, BA_UNIT_W, BA_UNIT_H);
-        ctx.fillStyle = pal.foreground;
-        const eyeX = unit.facing === 1 ? px + BA_UNIT_W - 3 : px + 1;
-        ctx.fillRect(eyeX, py + 2, 2, 2);
+        const anim = unitAnimRef.current[unit.id];
+        const isActive = i === activeIdx;
+        const isAiming = isActive && phaseRef.current === 'aiming';
 
-        // HP bar
+        // Frame selection: hit > walk > fire > aim > idle/blink
+        let frame: number = UNIT_FRAME.idle1;
+        if (anim && anim.hitUntil > now) {
+          frame = UNIT_FRAME.hit;
+        } else if (isAiming && unit.isLocal && walkHeldRef.current !== 0) {
+          frame = Math.floor(now / 140) % 2 === 0 ? UNIT_FRAME.walk1 : UNIT_FRAME.walk2;
+        } else if (playback && playback.shooterId === unit.id) {
+          frame = UNIT_FRAME.fire;
+        } else if (isAiming && unit.isLocal && previewRef.current) {
+          frame = UNIT_FRAME.aim;
+        } else if ((now + unit.colorIndex * 700) % 3400 < 160) {
+          frame = UNIT_FRAME.idle2;
+        }
+
+        // Firing recoil: brief lean opposite the launch direction
+        const recoil = recoilRef.current;
+        const recoilX = recoil && recoil.id === unit.id && recoil.until > now
+          ? recoil.dir * Math.ceil(((recoil.until - now) / 200) * 2)
+          : 0;
+
+        const px = Math.round(unit.x - UNIT_SPR_W / 2) + recoilX;
+        const py = Math.round(unit.y) - UNIT_SPR_H;
+        const sheet = unitSheetsRef.current[unit.colorIndex];
+
+        const blit = (img: HTMLCanvasElement) => {
+          if (unit.facing === -1) {
+            ctx.save();
+            ctx.translate(px + UNIT_SPR_W, py);
+            ctx.scale(-1, 1);
+            ctx.drawImage(img, frame * UNIT_SPR_W, 0, UNIT_SPR_W, UNIT_SPR_H, 0, 0, UNIT_SPR_W, UNIT_SPR_H);
+            ctx.restore();
+          } else {
+            ctx.drawImage(img, frame * UNIT_SPR_W, 0, UNIT_SPR_W, UNIT_SPR_H, px, py, UNIT_SPR_W, UNIT_SPR_H);
+          }
+        };
+
+        if (sheet) {
+          blit(sheet);
+        } else {
+          // Sheets not built yet (first frames before palette effect): plain block
+          ctx.fillStyle = pal[`player${unit.colorIndex}`] ?? pal.foreground;
+          ctx.fillRect(px, py + 2, BA_UNIT_W, BA_UNIT_H);
+        }
+
+        // Hit flash: white silhouette blink (skipped under reduced motion)
+        if (anim && anim.hitUntil > now && flashSheetRef.current && fx && !fx.reducedMotion) {
+          ctx.globalAlpha = Math.floor(now / 60) % 2 === 0 ? 0.85 : 0.3;
+          blit(flashSheetRef.current);
+          ctx.globalAlpha = 1;
+        }
+
+        // HP bar: eased value + low-HP pulse below 25%
+        if (anim) anim.displayHp += (unit.hp - anim.displayHp) * 0.12;
+        const shownHp = anim ? anim.displayHp : unit.hp;
+        const lowHp = unit.hp / BA_UNIT_HP < 0.25;
         const barW = 12;
         const bx = Math.round(unit.x - barW / 2);
         const by = py - 5;
         ctx.fillStyle = pal.muted;
         ctx.fillRect(bx, by, barW, 2);
-        ctx.fillStyle = unit.hp > 35 ? (pal[`player${unit.colorIndex}`] ?? pal.foreground) : pal.destructive;
-        ctx.fillRect(bx, by, Math.max(1, Math.round((unit.hp / BA_UNIT_HP) * barW)), 2);
+        if (lowHp && fx && !fx.reducedMotion) {
+          ctx.globalAlpha = 0.55 + 0.45 * Math.abs(((now % 900) / 450) - 1);
+        }
+        ctx.fillStyle = lowHp ? pal.destructive
+          : unit.hp > 35 ? (pal[`player${unit.colorIndex}`] ?? pal.foreground) : pal.destructive;
+        ctx.fillRect(bx, by, Math.max(1, Math.round((shownHp / BA_UNIT_HP) * barW)), 2);
+        ctx.globalAlpha = 1;
 
         // Active turn marker
-        if (i === activeIdx && phaseRef.current === 'aiming') {
+        if (isAiming) {
           ctx.fillStyle = pal.trajectory;
           ctx.fillRect(Math.round(unit.x) - 1, by - 5, 2, 2);
           ctx.fillRect(Math.round(unit.x) - 2, by - 3, 4, 1);
@@ -622,25 +892,56 @@ export function useBlastEngine({
       }
 
       // Projectile playback (cosmetic — the fallback timer owns state application)
-      const playback = playbackRef.current;
       if (playback) {
-        const elapsed = Date.now() - playback.startedAt;
+        const elapsed = now - playback.startedAt;
         const frameIdx = Math.floor((elapsed / 1000) * SIM_FPS);
         if (frameIdx >= playback.result.frames.length) {
           playbackRef.current = null;
           applyShotResultRef.current(playback);
         } else {
-          const frame = playback.result.frames[frameIdx];
-          ctx.fillStyle = pal.explosion;
-          const size = playback.weapon === 'grenade' ? 3 : 2;
-          ctx.fillRect(Math.round(frame.x) - 1, Math.round(frame.y) - 1, size, size);
+          const framePt = playback.result.frames[frameIdx];
+          const fxPal = {
+            explosion: pal.explosion, smoke: pal.smoke, dirt: pal.dirt,
+            terrain: pal.terrain, cloud: pal.cloud, trajectory: pal.trajectory,
+          };
+          const prev = playback.result.frames[Math.max(0, frameIdx - 2)];
+          ctx.save();
+          ctx.translate(Math.round(framePt.x), Math.round(framePt.y));
+          if (sprites && playback.weapon === 'bazooka') {
+            ctx.rotate(Math.atan2(framePt.y - prev.y, framePt.x - prev.x));
+            ctx.drawImage(sprites.rocket, -Math.round(ROCKET_W / 2), -Math.round(ROCKET_H / 2));
+            if (fx && frameIdx - playback.trailFrame >= 3) {
+              playback.trailFrame = frameIdx;
+              spawnTrailSmoke(fx, fxPal, prev.x, prev.y, now);
+            }
+          } else if (sprites && playback.weapon === 'grenade') {
+            const spinDir = playback.result.frames[0].x <= framePt.x ? 1 : -1;
+            ctx.rotate(frameIdx * 0.12 * spinDir);
+            ctx.drawImage(sprites.grenade, -Math.round(GRENADE_W / 2), -Math.round(GRENADE_H / 2));
+            // Fuse blink accelerates as detonation approaches
+            const fuse = BA_WEAPONS.grenade.fuseSteps ?? 180;
+            const period = fuse - frameIdx < 60 ? 6 : 14;
+            if (Math.floor(frameIdx / period) % 2 === 0) {
+              ctx.fillStyle = pal.explosion;
+              ctx.fillRect(-1, -Math.round(GRENADE_H / 2) - 1, 2, 2);
+            }
+          } else if (sprites && playback.weapon === 'boot') {
+            // Kick flip toward travel direction with a comedic wobble
+            if (framePt.x - prev.x < 0) ctx.scale(-1, 1);
+            ctx.rotate(Math.floor(now / 90) % 2 === 0 ? -0.2 : 0.2);
+            ctx.drawImage(sprites.boot, -Math.round(BOOT_W / 2), -Math.round(BOOT_H / 2));
+          } else {
+            ctx.fillStyle = pal.explosion;
+            ctx.fillRect(-1, -1, 2, 2);
+          }
+          ctx.restore();
         }
       }
 
-      // Explosion flash
+      // Explosion core flash (expanding filled circle)
       const explosion = explosionRef.current;
       if (explosion) {
-        const left = explosion.endsAt - Date.now();
+        const left = explosion.endsAt - now;
         if (left <= 0) {
           explosionRef.current = null;
         } else {
@@ -653,6 +954,29 @@ export function useBlastEngine({
           ctx.globalAlpha = 1;
         }
       }
+
+      // Particles, shockwave rings, floating damage numbers
+      if (fx) {
+        drawFxParticles(ctx, fx, pal.explosion, now);
+        for (const num of pruneNumbers(fx, now)) {
+          const t = numberProgress(num, now);
+          ctx.globalAlpha = 1 - t * t;
+          drawPixelText(
+            ctx,
+            num.text,
+            num.x,
+            num.y - (fx.reducedMotion ? 0 : t * 10),
+            pal.foreground,
+            pal.unitOutline,
+          );
+          ctx.globalAlpha = 1;
+        }
+      }
+
+      ctx.restore();
+
+      // Screen flash overlays the whole battlefield, unshaken
+      if (fx) drawFxScreenFlash(ctx, fx, pal.explosion, now);
     };
     rafRef.current = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(rafRef.current);

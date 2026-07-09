@@ -25,7 +25,8 @@ export const BA_CANVAS_W = 320;
 export const BA_CANVAS_H = 180;
 export const BA_SIM_STEP_HZ = 60;
 export const BA_GRAVITY = 0.06;
-export const BA_WIND_MAX = 0.012;
+// Stronger wind makes the wind-affected bazooka a skill shot instead of a default pick
+export const BA_WIND_MAX = 0.018;
 export const BA_TURN_TIME_MS = 30000;
 export const BA_MAX_ROUNDS = 10;
 export const BA_SUDDEN_DEATH_DRAIN = 10;
@@ -53,9 +54,11 @@ export interface BlastWeaponConfig {
   explodeOnUnitContact: boolean;
 }
 
+// Niches: bazooka = versatile but wind-sensitive; grenade = highest damage, needs a lob;
+// boot = close-range finisher whose damage-scaled knockback shoves units off ledges.
 export const BA_WEAPONS = {
   bazooka: {
-    label: 'Bazooka', damage: 35, radius: 12, windAffected: true,
+    label: 'Bazooka', damage: 30, radius: 12, windAffected: true,
     restitution: 0, fuseSteps: null, carves: true,
     maxSpeed: BA_MAX_LAUNCH_SPEED, explodeOnUnitContact: true,
   },
@@ -65,7 +68,7 @@ export const BA_WEAPONS = {
     maxSpeed: BA_MAX_LAUNCH_SPEED, explodeOnUnitContact: false,
   },
   boot: {
-    label: 'Boot', damage: 15, radius: 10, windAffected: false,
+    label: 'Boot', damage: 22, radius: 10, windAffected: false,
     restitution: 0, fuseSteps: 10, carves: false,
     maxSpeed: 1.6, explodeOnUnitContact: true,
   },
@@ -75,10 +78,12 @@ export type BlastWeaponId = keyof typeof BA_WEAPONS;
 
 // aimError perturbs the AI's chosen launch velocity (px/step); knockback scale is shared
 export const BA_KNOCKBACK_SCALE = 0.28;
+// candidates scale the AI's search budget (plan quality); grenadeShare is the fraction of
+// candidates spent on grenade lobs; selfHarmWeight is how hard self-damage is penalized.
 export const BA_DIFFICULTY_CONFIG = {
-  easy: { aimError: 0.9 },
-  medium: { aimError: 0.4 },
-  hard: { aimError: 0.12 },
+  easy: { aimError: 1.1, bazookaCandidates: 10, grenadeCandidates: 0, selfHarmWeight: 10 },
+  medium: { aimError: 0.45, bazookaCandidates: 24, grenadeCandidates: 12, selfHarmWeight: 40 },
+  hard: { aimError: 0.12, bazookaCandidates: 40, grenadeCandidates: 24, selfHarmWeight: 80 },
 } as const;
 
 export type BlastDifficulty = keyof typeof BA_DIFFICULTY_CONFIG;

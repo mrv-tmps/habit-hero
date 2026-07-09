@@ -69,9 +69,14 @@
     /* Blast Arena canvas palette — sampled at runtime via getComputedStyle */
     --ba-sky: 235 30% 10%;
     --ba-terrain: 260 20% 26%;
-    --ba-terrain-edge: 260 25% 38%;
+    --ba-terrain-edge: 260 25% 16%;
+    --ba-grass: 140 45% 40%;
+    --ba-dirt: 260 20% 21%;
     --ba-explosion: 30 95% 60%;
     --ba-trajectory: 45 90% 55%;
+    --ba-smoke: 240 6% 55%;
+    --ba-cloud: 235 20% 22%;
+    --ba-unit-outline: 240 20% 4%;
 
     /* Multiplayer player slot colors */
     --player-1: 45 90% 55%;
@@ -221,6 +226,30 @@
     animation: countdown-pop 0.35s ease-out;
   }
 
+  /* Blast Arena turn banner: slide in, hold, fade out */
+  @keyframes turn-banner {
+    0%   { transform: translateY(-12px); opacity: 0; }
+    12%  { transform: translateY(0); opacity: 1; }
+    78%  { transform: translateY(0); opacity: 1; }
+    100% { transform: translateY(0); opacity: 0; }
+  }
+  .animate-turn-banner {
+    animation: turn-banner 1.6s ease-out forwards;
+  }
+  @keyframes turn-banner-static {
+    0%, 80% { opacity: 1; }
+    100%    { opacity: 0; }
+  }
+
+  /* Blast Arena in-canvas hint: fades away after a short read window */
+  @keyframes hint-fade {
+    0%, 70% { opacity: 1; }
+    100%    { opacity: 0; }
+  }
+  .animate-hint-fade {
+    animation: hint-fade 7s ease-out forwards;
+  }
+
   @keyframes fade-in {
     from { opacity: 0; transform: translateY(4px); }
     to   { opacity: 1; transform: translateY(0); }
@@ -262,6 +291,15 @@
     .animate-fade-in,
     .animate-countdown-pop {
       animation: none;
+    }
+    /* Banner still conveys whose turn it is: fade without motion, then clear */
+    .animate-turn-banner {
+      animation: turn-banner-static 1.6s linear forwards;
+    }
+    /* Hint must stay readable — never auto-hide under reduced motion */
+    .animate-hint-fade {
+      animation: none;
+      opacity: 1;
     }
   }
 }

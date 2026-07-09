@@ -11,8 +11,6 @@ import {
   type UnitState,
 } from '@/lib/blastSim';
 
-const BAZOOKA_CANDIDATES = 30;
-const GRENADE_CANDIDATES = 15;
 const BOOT_RANGE_X = 14;
 const BOOT_RANGE_Y = 12;
 
@@ -28,6 +26,7 @@ function candidateScore(
   wind: number,
   shooter: UnitState,
   target: UnitState,
+  selfHarmWeight: number,
 ): number {
   const result = simulateShot(input, terrain, units, wind, shooter.id);
   if (!result.explosionAt) return Number.MAX_SAFE_INTEGER;
@@ -35,7 +34,7 @@ function candidateScore(
   const dy = result.explosionAt.y - (target.y - BA_UNIT_H / 2);
   let score = dx * dx + dy * dy;
   // Self-damage is a bad plan; nudge the search away from it
-  score += (result.damage[shooter.id] ?? 0) * 40;
+  score += (result.damage[shooter.id] ?? 0) * selfHarmWeight;
   return score;
 }
 
@@ -60,23 +59,24 @@ export function chooseAiShot(
     return { weapon: 'boot', ...origin, vx: towardTarget * speed, vy: -speed * 0.3 };
   }
 
+  const cfg = BA_DIFFICULTY_CONFIG[difficulty];
   let best: ShotInput | null = null;
   let bestScore = Number.MAX_SAFE_INTEGER;
 
   const tryCandidate = (input: ShotInput) => {
-    const score = candidateScore(input, terrain, units, wind, shooter, target);
+    const score = candidateScore(input, terrain, units, wind, shooter, target, cfg.selfHarmWeight);
     if (score < bestScore) {
       bestScore = score;
       best = input;
     }
   };
 
-  for (let i = 0; i < BAZOOKA_CANDIDATES; i++) {
+  for (let i = 0; i < cfg.bazookaCandidates; i++) {
     const vx = towardTarget * Math.random() * BA_MAX_LAUNCH_SPEED;
     const vy = -Math.random() * BA_MAX_LAUNCH_SPEED;
     tryCandidate({ weapon: 'bazooka', ...origin, vx, vy });
   }
-  for (let i = 0; i < GRENADE_CANDIDATES; i++) {
+  for (let i = 0; i < cfg.grenadeCandidates; i++) {
     const vx = towardTarget * Math.random() * BA_MAX_LAUNCH_SPEED * 0.8;
     const vy = -Math.random() * BA_MAX_LAUNCH_SPEED;
     tryCandidate({ weapon: 'grenade', ...origin, vx, vy });
@@ -89,6 +89,6 @@ export function chooseAiShot(
     vy: -BA_MAX_LAUNCH_SPEED * 0.6,
   };
 
-  const err = BA_DIFFICULTY_CONFIG[difficulty].aimError;
+  const err = cfg.aimError;
   return { ...chosen, vx: chosen.vx + gauss() * err, vy: chosen.vy + gauss() * err };
 }

@@ -22,7 +22,7 @@ export default function MultiplayerBlast({ room }: { room: MultiplayerRoom }) {
   } = useMultiplayerBlast(room);
 
   const {
-    phase, countdown, activeUnit, unitsView, wind, turnTimeLeft,
+    phase, countdown, turnIndex, activeUnit, unitsView, wind, turnTimeLeft,
     selectedWeapon, setWeapon, staminaLeft,
     commitShot, setWalkHeld, updateAim, clearAim, registerCanvas,
   } = engine;
@@ -85,10 +85,11 @@ export default function MultiplayerBlast({ room }: { room: MultiplayerRoom }) {
     phase === 'projectile' ? '...' :
     isLocalTurn ? 'your turn' :
     `${activeUnit?.nickname ?? ''}'s turn`;
+  const bannerText = isLocalTurn ? 'your turn' : `${activeUnit?.nickname ?? ''}'s turn`;
 
   return (
-    <div data-mode="arcade" className="min-h-screen flex flex-col items-center px-4 sm:px-8 pt-6 sm:pt-10 pb-8 select-none">
-      <div className="w-full max-w-[760px] flex flex-col gap-3">
+    <div data-mode="arcade" className="min-h-screen flex flex-col items-center px-3 sm:px-8 pt-3 sm:pt-5 pb-4 select-none">
+      <div className="w-full max-w-[1100px] flex flex-col gap-2">
 
         {/* Player strip */}
         <div className="flex flex-wrap gap-2">
@@ -128,7 +129,7 @@ export default function MultiplayerBlast({ room }: { room: MultiplayerRoom }) {
           })}
         </div>
 
-        <div className="relative flex flex-col gap-3">
+        <div className="relative flex flex-col gap-2">
           <BlastHud
             turnLabel={turnLabel}
             isLocalTurn={isLocalTurn}
@@ -146,12 +147,9 @@ export default function MultiplayerBlast({ room }: { room: MultiplayerRoom }) {
             commitShot={commitShot}
             maxSpeed={BA_WEAPONS[selectedWeapon].maxSpeed}
             canAim={isLocalTurn}
+            banner={phase === 'aiming' ? { text: bannerText, key: turnIndex } : null}
+            hint="drag to aim, release to fire · arrows to walk · 1/2/3 weapons"
           />
-          <p className="text-center text-xs font-mono text-focused-dim">
-            {isLocalTurn
-              ? 'drag to aim, release to fire · arrows to walk · 1/2/3 weapons'
-              : `waiting for ${activeUnit?.nickname ?? 'opponent'}…`}
-          </p>
 
           {phase === 'countdown' && (
             <div className="absolute inset-0 z-30 flex items-center justify-center">

@@ -1,5 +1,16 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Wind } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  Bomb,
+  ChevronLeft,
+  ChevronRight,
+  Footprints,
+  Rocket,
+  Timer,
+  Wind,
+  type LucideIcon,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   BA_WEAPONS,
@@ -21,6 +32,12 @@ interface BlastHudProps {
 
 const WEAPON_IDS = Object.keys(BA_WEAPONS) as BlastWeaponId[];
 
+const WEAPON_ICONS: Record<BlastWeaponId, LucideIcon> = {
+  bazooka: Rocket,
+  grenade: Bomb,
+  boot: Footprints,
+};
+
 export default function BlastHud({
   turnLabel,
   isLocalTurn,
@@ -41,11 +58,19 @@ export default function BlastHud({
   return (
     <div className="w-full flex flex-col gap-2">
       {/* Top bar: turn + wind + timer */}
-      <div className="flex items-center justify-between font-mono text-sm">
-        <span className={cn(isLocalTurn ? 'text-focused-caret' : 'text-focused-dim')}>
+      <div className="flex items-center justify-between gap-3 font-mono">
+        <span
+          className={cn(
+            'text-base sm:text-lg font-semibold truncate',
+            isLocalTurn ? 'text-focused-caret' : 'text-focused-dim',
+          )}
+        >
           {turnLabel}
         </span>
-        <span className="flex items-center gap-1.5 text-focused-dim" aria-label={`Wind ${wind >= 0 ? 'right' : 'left'}, strength ${windStrength} of 3`}>
+        <span
+          className="flex items-center gap-1.5 text-focused-dim shrink-0"
+          aria-label={`Wind ${wind >= 0 ? 'right' : 'left'}, strength ${windStrength} of 3`}
+        >
           <Wind className="w-3.5 h-3.5" />
           {wind < 0 && <ArrowLeft className="w-3 h-3" />}
           <span className="flex gap-0.5">
@@ -63,36 +88,42 @@ export default function BlastHud({
         </span>
         <span
           className={cn(
-            'font-bold text-lg tabular-nums w-8 text-right',
-            timeLeft <= 5 ? 'text-focused-incorrect' : 'text-focused-caret',
+            'flex items-center gap-1.5 font-bold text-xl tabular-nums shrink-0',
+            timeLeft <= 5 ? 'text-focused-incorrect animate-pulse-glow' : 'text-focused-caret',
           )}
+          aria-label={`${timeLeft} seconds left`}
         >
-          {timeLeft}
+          <Timer className="w-4 h-4 opacity-60" />
+          <span className="w-7 text-right">{timeLeft}</span>
         </span>
       </div>
 
       {/* Bottom bar: weapons + stamina + walk buttons */}
       <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-1" role="radiogroup" aria-label="Weapon">
-          {WEAPON_IDS.map((id, i) => (
-            <button
-              key={id}
-              onClick={() => setWeapon(id)}
-              onMouseDown={e => e.preventDefault()}
-              disabled={!isLocalTurn}
-              role="radio"
-              aria-checked={selectedWeapon === id}
-              className={cn(
-                'font-mono text-xs px-2.5 py-1.5 rounded-md transition-colors cursor-pointer disabled:opacity-40',
-                selectedWeapon === id
-                  ? 'text-focused-caret bg-white/[0.08]'
-                  : 'text-focused-dim hover:text-focused-correct',
-              )}
-            >
-              <span className="opacity-50 mr-1">{i + 1}</span>
-              {BA_WEAPONS[id].label}
-            </button>
-          ))}
+        <div className="flex items-center gap-1.5" role="radiogroup" aria-label="Weapon">
+          {WEAPON_IDS.map((id, i) => {
+            const Icon = WEAPON_ICONS[id];
+            return (
+              <button
+                key={id}
+                onClick={() => setWeapon(id)}
+                onMouseDown={e => e.preventDefault()}
+                disabled={!isLocalTurn}
+                role="radio"
+                aria-checked={selectedWeapon === id}
+                className={cn(
+                  'flex items-center gap-1.5 font-mono text-xs px-2.5 py-1.5 rounded-md transition-colors cursor-pointer disabled:opacity-40',
+                  selectedWeapon === id
+                    ? 'text-focused-caret bg-white/[0.08] ring-1 ring-white/[0.12]'
+                    : 'text-focused-dim hover:text-focused-correct',
+                )}
+              >
+                <span className="opacity-50">{i + 1}</span>
+                <Icon className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">{BA_WEAPONS[id].label}</span>
+              </button>
+            );
+          })}
         </div>
 
         <div className="flex items-center gap-3">
