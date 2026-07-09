@@ -67,5 +67,7 @@ export type MultiplayerEvent =
   | { type: 'player_finished'; nickname: string; final_score: number; wpm?: number }
   | { type: 'game_end'; rankings: RankedResult[] }
   | { type: 'question_advance'; question_idx: number; claimer_nickname: string }
+  | { type: 'rematch' }
+  | { type: 'room_updated' }
   | BlastShotEvent
   | { type: 'turn_resolved'; resolution: TurnResolution };

@@ -23,6 +23,18 @@ export interface CreateRoomConfig {
   user_id?: string | null;
 }
 
+// Full config the host can edit in the lobby. Nulls clear a column that does not
+// apply to the selected game type.
+export interface RoomConfigUpdate {
+  game_type: GameType;
+  difficulty: MathDifficulty | null;
+  typing_mode: TypingMode | null;
+  code_language: CodeLanguage | null;
+  question_count: number | null;
+  time_limit_seconds: number | null;
+  max_players: number;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any;
 
@@ -193,6 +205,38 @@ export function useMultiplayerRoom() {
     if (error) throw error;
   }, []);
 
+  const resetRoomForRematch = useCallback(async (
+    roomId: string,
+    token: string,
+    seed: number,
+  ): Promise<void> => {
+    const { error } = await db.rpc('reset_room_for_rematch', {
+      p_room_id: roomId,
+      p_token: token,
+      p_seed: seed,
+    });
+    if (error) throw error;
+  }, []);
+
+  const updateRoomConfig = useCallback(async (
+    roomId: string,
+    token: string,
+    config: RoomConfigUpdate,
+  ): Promise<void> => {
+    const { error } = await db.rpc('update_room_config', {
+      p_room_id: roomId,
+      p_token: token,
+      p_game_type: config.game_type,
+      p_difficulty: config.difficulty,
+      p_typing_mode: config.typing_mode,
+      p_code_language: config.code_language,
+      p_question_count: config.question_count,
+      p_time_limit_seconds: config.time_limit_seconds,
+      p_max_players: config.max_players,
+    });
+    if (error) throw error;
+  }, []);
+
   const finalizeResults = useCallback(async (roomId: string, rankings: RankedResult[]): Promise<void> => {
     await Promise.all(
       rankings.map(r =>
@@ -224,6 +268,8 @@ export function useMultiplayerRoom() {
     fetchParticipants,
     leaveRoom,
     startGame,
+    resetRoomForRematch,
+    updateRoomConfig,
     finalizeResults,
   };
 }
