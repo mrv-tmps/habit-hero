@@ -204,11 +204,11 @@ export default function MultiplayerTyping({ room }: { room: MultiplayerRoom }) {
   if (phase === 'done') {
     return (
       <MultiplayerResults
+        room={room}
         rankings={rankings}
         participants={participants}
         ownNickname={ownNickname}
         scoreUnit="wpm"
-        playAgainGameId="typing"
       />
     );
   }

@@ -221,11 +221,11 @@ export default function MultiplayerMath({ room }: { room: MultiplayerRoom }) {
   if (phase === 'done') {
     return (
       <MultiplayerResults
+        room={room}
         rankings={rankings}
         participants={participants}
         ownNickname={ownNickname}
         scoreUnit="points"
-        playAgainGameId="math"
       />
     );
   }

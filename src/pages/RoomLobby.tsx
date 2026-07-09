@@ -8,8 +8,10 @@ import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { supabase } from '@/integrations/supabase/client';
 import { useMultiplayerRoom, getStoredToken } from '@/hooks/useMultiplayerRoom';
+import type { RoomConfigUpdate } from '@/hooks/useMultiplayerRoom';
 import { useRealtimeRoom } from '@/hooks/useRealtimeRoom';
 import { useAuth } from '@/contexts/AuthContext';
+import RoomConfigPanel from '@/components/multiplayer/RoomConfigPanel';
 import type { MultiplayerRoom, MultiplayerParticipant } from '@/types/multiplayer';
 import { cn } from '@/lib/utils';
 
@@ -32,7 +34,7 @@ export default function RoomLobby() {
   const { code } = useParams<{ code: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { fetchRoom, fetchParticipants, joinRoom, leaveRoom, startGame } = useMultiplayerRoom();
+  const { fetchRoom, fetchParticipants, joinRoom, leaveRoom, startGame, updateRoomConfig } = useMultiplayerRoom();
   const { broadcast, onEvent, presenceList, trackPresence } = useRealtimeRoom(code ?? null);
 
   const [room, setRoom] = useState<MultiplayerRoom | null>(null);
@@ -43,6 +45,7 @@ export default function RoomLobby() {
   const [nicknameError, setNicknameError] = useState('');
   const [isJoining, setIsJoining] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
+  const [isSavingConfig, setIsSavingConfig] = useState(false);
   const [copied, setCopied] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const presenceTracked = useRef(false);
@@ -116,15 +119,17 @@ export default function RoomLobby() {
     };
   }, [room, fetchParticipants]);
 
-  // Listen for game_start broadcast
+  // Listen for game_start + host config changes
   useEffect(() => {
     const unsub = onEvent(event => {
       if (event.type === 'game_start' && code) {
         navigate(`/games/room/${code}/play`);
+      } else if (event.type === 'room_updated' && code) {
+        fetchRoom(code).then(r => { if (r) setRoom(r); });
       }
     });
     return unsub;
-  }, [onEvent, navigate, code]);
+  }, [onEvent, navigate, code, fetchRoom]);
 
   async function handleJoin() {
     if (!code || !nicknameInput.trim()) {
@@ -183,6 +188,25 @@ export default function RoomLobby() {
       navigate(`/games/room/${code}/play`);
     } catch {
       setIsStarting(false);
+    }
+  }
+
+  async function handleConfigChange(config: RoomConfigUpdate) {
+    if (!room || !ownParticipant?.is_host) return;
+    const token = getStoredToken(room.code);
+    if (!token) return;
+
+    const prev = room;
+    // Optimistic update so the host's own controls respond instantly.
+    setRoom({ ...room, ...config });
+    setIsSavingConfig(true);
+    try {
+      await updateRoomConfig(room.id, token, config);
+      broadcast({ type: 'room_updated' });
+    } catch {
+      setRoom(prev);
+    } finally {
+      setIsSavingConfig(false);
     }
   }
 
@@ -323,37 +347,46 @@ export default function RoomLobby() {
               </div>
             </div>
 
-            {/* Game summary */}
-            <div className="rounded-lg bg-secondary p-3 flex flex-col gap-1">
-              <p className="text-sm font-sans text-muted-foreground capitalize">
-                <span className="text-foreground font-medium">Game: </span>
-                {room.game_type === 'math-buzzer' ? 'Math Buzzer'
-                  : room.game_type === 'blast-arena' ? 'Blast Arena'
-                  : 'Typing Race'}
-              </p>
-              {room.difficulty && (
+            {/* Game setup — editable for the host, read-only for everyone else */}
+            {ownParticipant?.is_host ? (
+              <RoomConfigPanel
+                room={room}
+                playerCount={participants.length}
+                disabled={isSavingConfig || isStarting}
+                onChange={handleConfigChange}
+              />
+            ) : (
+              <div className="rounded-lg bg-secondary p-3 flex flex-col gap-1">
                 <p className="text-sm font-sans text-muted-foreground capitalize">
-                  <span className="text-foreground font-medium">Difficulty: </span>
-                  {room.difficulty}
+                  <span className="text-foreground font-medium">Game: </span>
+                  {room.game_type === 'math-buzzer' ? 'Math Buzzer'
+                    : room.game_type === 'blast-arena' ? 'Blast Arena'
+                    : 'Typing Race'}
                 </p>
-              )}
-              {room.question_count && (
+                {room.difficulty && (
+                  <p className="text-sm font-sans text-muted-foreground capitalize">
+                    <span className="text-foreground font-medium">Difficulty: </span>
+                    {room.difficulty}
+                  </p>
+                )}
+                {room.question_count && (
+                  <p className="text-sm font-sans text-muted-foreground">
+                    <span className="text-foreground font-medium">Questions: </span>
+                    {room.question_count}
+                  </p>
+                )}
+                {room.time_limit_seconds && (
+                  <p className="text-sm font-sans text-muted-foreground">
+                    <span className="text-foreground font-medium">Time limit: </span>
+                    {room.time_limit_seconds}s
+                  </p>
+                )}
                 <p className="text-sm font-sans text-muted-foreground">
-                  <span className="text-foreground font-medium">Questions: </span>
-                  {room.question_count}
+                  <span className="text-foreground font-medium">Max players: </span>
+                  {room.max_players}
                 </p>
-              )}
-              {room.time_limit_seconds && (
-                <p className="text-sm font-sans text-muted-foreground">
-                  <span className="text-foreground font-medium">Time limit: </span>
-                  {room.time_limit_seconds}s
-                </p>
-              )}
-              <p className="text-sm font-sans text-muted-foreground">
-                <span className="text-foreground font-medium">Max players: </span>
-                {room.max_players}
-              </p>
-            </div>
+              </div>
+            )}
 
             {/* Controls */}
             {ownParticipant?.is_host ? (

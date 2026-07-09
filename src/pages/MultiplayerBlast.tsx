@@ -72,11 +72,11 @@ export default function MultiplayerBlast({ room }: { room: MultiplayerRoom }) {
     return (
       <MultiplayerResults
         title="Battle Complete!"
+        room={room}
         rankings={rankings}
         participants={participants}
         ownNickname={ownNickname}
         scoreUnit="dmg"
-        playAgainGameId="blast-arena"
       />
     );
   }

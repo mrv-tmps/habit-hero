@@ -1,19 +1,20 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Trophy, Medal, Award } from 'lucide-react';
+import { Trophy, Medal, Award, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
+import { useMultiplayerRoom, getStoredToken } from '@/hooks/useMultiplayerRoom';
+import { useRealtimeRoom } from '@/hooks/useRealtimeRoom';
 import { slotColor } from '@/components/multiplayer/playerColors';
-import type { MultiplayerParticipant, RankedResult } from '@/types/multiplayer';
-import { MP_RESULT_DISPLAY_MS } from '@/config/constants';
+import type { MultiplayerParticipant, RankedResult, MultiplayerRoom } from '@/types/multiplayer';
 import { cn } from '@/lib/utils';
 
 interface MultiplayerResultsProps {
+  room: MultiplayerRoom;
   rankings: RankedResult[];
   participants: MultiplayerParticipant[];
   ownNickname: string;
   scoreUnit: 'points' | 'wpm' | 'dmg';
-  playAgainGameId: string;
   title?: string;
 }
 
@@ -24,22 +25,45 @@ function RankIcon({ position }: { position: number }) {
 }
 
 export default function MultiplayerResults({
+  room,
   rankings,
   participants,
   ownNickname,
   scoreUnit,
-  playAgainGameId,
   title = 'Race Complete!',
 }: MultiplayerResultsProps) {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [countdown, setCountdown] = useState(Math.ceil(MP_RESULT_DISPLAY_MS / 1000));
+  const { resetRoomForRematch } = useMultiplayerRoom();
+  const { broadcast, onEvent } = useRealtimeRoom(room.code);
+  const [isResetting, setIsResetting] = useState(false);
 
+  const isHost = useMemo(
+    () => participants.find(p => p.nickname === ownNickname)?.is_host ?? false,
+    [participants, ownNickname],
+  );
+
+  // Non-host players follow the host back to the lobby when a rematch is called.
   useEffect(() => {
-    const timer = setTimeout(() => navigate('/games'), MP_RESULT_DISPLAY_MS);
-    const interval = setInterval(() => setCountdown(c => Math.max(0, c - 1)), 1000);
-    return () => { clearTimeout(timer); clearInterval(interval); };
-  }, [navigate]);
+    const unsub = onEvent(event => {
+      if (event.type === 'rematch') navigate(`/games/room/${room.code}`);
+    });
+    return unsub;
+  }, [onEvent, navigate, room.code]);
+
+  async function handlePlayAgain() {
+    const token = getStoredToken(room.code);
+    if (!token) return;
+    setIsResetting(true);
+    try {
+      const seed = Math.floor(Math.random() * 2 ** 31);
+      await resetRoomForRematch(room.id, token, seed);
+      broadcast({ type: 'rematch' });
+      navigate(`/games/room/${room.code}`);
+    } catch {
+      setIsResetting(false);
+    }
+  }
 
   const hasAuthPlayer = rankings.some(r => r.user_id !== null);
 
@@ -114,12 +138,27 @@ export default function MultiplayerResults({
         )}
 
         <div className="flex flex-col sm:flex-row gap-2">
-          <Button
-            className="flex-1 cursor-pointer"
-            onClick={() => navigate(`/games/room/new?game=${playAgainGameId}`)}
-          >
-            Play Again
-          </Button>
+          {isHost ? (
+            <Button
+              className="flex-1 cursor-pointer"
+              onClick={handlePlayAgain}
+              disabled={isResetting}
+            >
+              {isResetting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  Restarting…
+                </>
+              ) : (
+                'Play Again'
+              )}
+            </Button>
+          ) : (
+            <div className="flex-1 flex items-center justify-center gap-2 text-muted-foreground text-sm font-sans">
+              <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+              Waiting for host…
+            </div>
+          )}
           <Button
             variant="outline"
             className="flex-1 cursor-pointer"
@@ -130,7 +169,9 @@ export default function MultiplayerResults({
         </div>
 
         <p className="text-muted-foreground text-xs text-center font-sans">
-          Returning to games in {countdown}s…
+          {isHost
+            ? 'Play again keeps everyone in this lobby.'
+            : 'The host can restart to play again with the same players.'}
         </p>
       </div>
     </div>
