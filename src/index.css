@@ -66,6 +66,13 @@
     --game-live: 140 65% 45%;
     --game-coming-soon: 240 5% 35%;
 
+    /* Blast Arena canvas palette — sampled at runtime via getComputedStyle */
+    --ba-sky: 235 30% 10%;
+    --ba-terrain: 260 20% 26%;
+    --ba-terrain-edge: 260 25% 38%;
+    --ba-explosion: 30 95% 60%;
+    --ba-trajectory: 45 90% 55%;
+
     /* Multiplayer player slot colors */
     --player-1: 45 90% 55%;
     --player-2: 210 80% 55%;
@@ -190,6 +197,30 @@
     text-shadow: none;
   }
 
+  /* Arcade mode — canvas minigames (Blast Arena) */
+  [data-mode="arcade"] {
+    background-color: hsl(var(--focused-bg));
+    background-image: none;
+  }
+  [data-mode="arcade"] .text-glow,
+  [data-mode="arcade"] .card-glow {
+    text-shadow: none;
+    box-shadow: none;
+  }
+
+  .pixelated {
+    image-rendering: pixelated;
+  }
+
+  @keyframes countdown-pop {
+    0% { transform: scale(0.4); opacity: 0; }
+    30% { transform: scale(1.15); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  .animate-countdown-pop {
+    animation: countdown-pop 0.35s ease-out;
+  }
+
   @keyframes fade-in {
     from { opacity: 0; transform: translateY(4px); }
     to   { opacity: 1; transform: translateY(0); }
@@ -228,7 +259,8 @@
     .animate-level-up,
     .animate-caret-blink,
     .animate-char-error,
-    .animate-fade-in {
+    .animate-fade-in,
+    .animate-countdown-pop {
       animation: none;
     }
   }

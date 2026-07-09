@@ -14,6 +14,7 @@ import GamesHub from "./pages/GamesHub";
 import TypingTest from "./pages/TypingTest";
 import TypingHistory from "./pages/TypingHistory";
 import MathChallenge from "./pages/MathChallenge";
+import BlastArena from "./pages/BlastArena";
 import ErrorPage from "./pages/Error";
 import CreateRoom from "./pages/CreateRoom";
 import RoomLobby from "./pages/RoomLobby";
@@ -70,6 +71,7 @@ function AppRoutes() {
       <Route path="/games/typing" element={<TypingTest />} />
       <Route path="/games/typing/history" element={<ProtectedRoute><TypingHistory /></ProtectedRoute>} />
       <Route path="/games/math" element={<MathChallenge />} />
+      <Route path="/games/blast-arena" element={<BlastArena />} />
       <Route path="/games/room/new" element={<CreateRoom />} />
       <Route path="/games/room/:code" element={<RoomLobby />} />
       <Route path="/games/room/:code/play" element={<MultiplayerGame />} />

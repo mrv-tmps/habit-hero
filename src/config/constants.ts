@@ -19,3 +19,62 @@ export const MP_TYPING_MODE = ['english', 'code'] as const;
 export const MP_CODE_LANGUAGES = ['javascript', 'python', 'c'] as const;
 export const MP_TYPING_WORD_COUNT = 60;
 export const MP_RESULT_DISPLAY_MS = 8000;
+
+// Blast Arena (turn-based artillery)
+export const BA_CANVAS_W = 320;
+export const BA_CANVAS_H = 180;
+export const BA_SIM_STEP_HZ = 60;
+export const BA_GRAVITY = 0.06;
+export const BA_WIND_MAX = 0.012;
+export const BA_TURN_TIME_MS = 30000;
+export const BA_MAX_ROUNDS = 10;
+export const BA_SUDDEN_DEATH_DRAIN = 10;
+export const BA_UNIT_HP = 100;
+export const BA_UNIT_W = 6;
+export const BA_UNIT_H = 8;
+export const BA_WALK_STAMINA_PX = 40;
+export const BA_MAX_LAUNCH_SPEED = 3.4;
+export const BA_COUNTDOWN_MS = 3000;
+export const BA_AI_THINK_MS = 1000;
+
+export interface BlastWeaponConfig {
+  label: string;
+  damage: number;
+  radius: number;
+  windAffected: boolean;
+  restitution: number;
+  fuseSteps: number | null;
+  carves: boolean;
+  maxSpeed: number;
+  explodeOnUnitContact: boolean;
+}
+
+export const BA_WEAPONS = {
+  bazooka: {
+    label: 'Bazooka', damage: 35, radius: 12, windAffected: true,
+    restitution: 0, fuseSteps: null, carves: true,
+    maxSpeed: BA_MAX_LAUNCH_SPEED, explodeOnUnitContact: true,
+  },
+  grenade: {
+    label: 'Grenade', damage: 45, radius: 14, windAffected: false,
+    restitution: 0.5, fuseSteps: 180, carves: true,
+    maxSpeed: BA_MAX_LAUNCH_SPEED, explodeOnUnitContact: false,
+  },
+  boot: {
+    label: 'Boot', damage: 15, radius: 10, windAffected: false,
+    restitution: 0, fuseSteps: 10, carves: false,
+    maxSpeed: 1.6, explodeOnUnitContact: true,
+  },
+} as const satisfies Record<string, BlastWeaponConfig>;
+
+export type BlastWeaponId = keyof typeof BA_WEAPONS;
+
+// aimError perturbs the AI's chosen launch velocity (px/step); knockback scale is shared
+export const BA_KNOCKBACK_SCALE = 0.28;
+export const BA_DIFFICULTY_CONFIG = {
+  easy: { aimError: 0.9 },
+  medium: { aimError: 0.4 },
+  hard: { aimError: 0.12 },
+} as const;
+
+export type BlastDifficulty = keyof typeof BA_DIFFICULTY_CONFIG;
