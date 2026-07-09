@@ -145,8 +145,9 @@ export function useBlastEngine({
     setUnitsView(unitsRef.current.map(u => ({ ...u })));
   }, []);
 
-  // ── World init (once per seed/roster)
+  // ── World init (re-runs when the roster arrives — multiplayer loads participants async)
   useEffect(() => {
+    if (unitInits.length === 0) return;
     const terrain = generateTerrain(seed);
     terrainRef.current = terrain;
     const spawns = spawnPositions(seed, terrain, unitInits.length);
@@ -161,7 +162,7 @@ export function useBlastEngine({
     repaintTerrain();
     syncUnits();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seed]);
+  }, [seed, unitInits]);
 
   // ── Terrain offscreen canvas
   const repaintTerrain = useCallback(() => {
@@ -421,9 +422,11 @@ export function useBlastEngine({
     wind: windRef.current,
   }), []);
 
-  // ── Countdown until startAt
+  // ── Countdown until startAt (startAt 0 = game not begun; stay in countdown phase)
   useEffect(() => {
+    if (startAt <= 0) return;
     const tick = () => {
+      if (unitsRef.current.length === 0) return;
       const left = startAt - Date.now();
       if (left <= 0) {
         clearInterval(interval);

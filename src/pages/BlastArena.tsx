@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Bomb, RotateCcw, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -58,14 +58,15 @@ interface MatchProps {
 }
 
 function BlastMatch({ seed, startAt, difficulty, characterName, onEnd }: MatchProps) {
-  const engine = useBlastEngine({
-    seed,
-    startAt,
-    unitInits: [
+  // Stable identity — the engine re-initializes its world when this array changes
+  const unitInits = useMemo(
+    () => [
       { id: LOCAL_UNIT_ID, nickname: characterName, colorIndex: 1, isLocal: true },
       { id: AI_UNIT_ID, nickname: 'Rival Bot', colorIndex: 5, isLocal: false },
     ],
-  });
+    [characterName],
+  );
+  const engine = useBlastEngine({ seed, startAt, unitInits });
 
   const {
     phase, countdown, activeUnit, wind, turnTimeLeft, winner, damageDealt,
