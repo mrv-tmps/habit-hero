@@ -12,8 +12,9 @@ interface MultiplayerResultsProps {
   rankings: RankedResult[];
   participants: MultiplayerParticipant[];
   ownNickname: string;
-  scoreUnit: 'points' | 'wpm';
+  scoreUnit: 'points' | 'wpm' | 'dmg';
   playAgainGameId: string;
+  title?: string;
 }
 
 function RankIcon({ position }: { position: number }) {
@@ -28,6 +29,7 @@ export default function MultiplayerResults({
   ownNickname,
   scoreUnit,
   playAgainGameId,
+  title = 'Race Complete!',
 }: MultiplayerResultsProps) {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -49,6 +51,7 @@ export default function MultiplayerResults({
 
   function scoreLabel(r: RankedResult): string {
     if (scoreUnit === 'wpm') return `${r.wpm ?? r.score} wpm`;
+    if (scoreUnit === 'dmg') return `${r.score} dmg`;
     return `${r.score} ${r.score === 1 ? 'pt' : 'pts'}`;
   }
 
@@ -56,7 +59,7 @@ export default function MultiplayerResults({
     <div className="min-h-screen page-bg flex items-center justify-center p-4">
       <div className="w-full max-w-lg bg-card border border-border rounded-xl p-6 flex flex-col gap-6">
         <h1 className="font-pixel text-xl text-xpGlow animate-titlePulse text-center">
-          Race Complete!
+          {title}
         </h1>
 
         <div className="flex flex-col gap-1">

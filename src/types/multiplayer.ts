@@ -44,6 +44,18 @@ export interface RankedResult {
   xp_earned: number;
 }
 
+// Blast Arena: the payload carries velocities (vx/vy), not angles — trig is resolved
+// on the shooter's client so every client's deterministic replay is bit-identical.
+export interface BlastShotEvent {
+  type: 'shot_fired';
+  turn_index: number;
+  weapon: string;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+}
+
 export type MultiplayerEvent =
   | { type: 'game_start'; seed: number; start_at: string }
   | { type: 'player_ready'; nickname: string }
@@ -52,4 +64,7 @@ export type MultiplayerEvent =
   | { type: 'progress_update'; nickname: string; progress_pct: number; current_score: number; wpm?: number }
   | { type: 'player_finished'; nickname: string; final_score: number; wpm?: number }
   | { type: 'game_end'; rankings: RankedResult[] }
-  | { type: 'question_advance'; question_idx: number; claimer_nickname: string };
+  | { type: 'question_advance'; question_idx: number; claimer_nickname: string }
+  | BlastShotEvent
+  | { type: 'turn_resolved'; turn_index: number; hp: Record<string, number> }
+  | { type: 'turn_skipped'; turn_index: number };

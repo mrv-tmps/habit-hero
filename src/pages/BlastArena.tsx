@@ -358,10 +358,13 @@ export default function BlastArena() {
                 <Button onClick={startMatch} className="px-8">
                   Start Battle
                 </Button>
-                <span className="flex items-center gap-1.5 text-xs font-mono text-muted-foreground opacity-60">
+                <button
+                  onClick={() => navigate('/games/room/new?game=blast-arena')}
+                  className="flex items-center gap-1.5 text-xs font-mono text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                >
                   <Users className="w-3.5 h-3.5" />
-                  multiplayer coming soon
-                </span>
+                  play with friends
+                </button>
               </div>
 
               <div className="text-xs font-mono text-muted-foreground space-y-1 text-center">

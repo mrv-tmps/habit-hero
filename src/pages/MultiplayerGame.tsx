@@ -4,6 +4,7 @@ import { Loader2, Zap } from 'lucide-react';
 import { useMultiplayerRoom } from '@/hooks/useMultiplayerRoom';
 import MultiplayerMath from '@/pages/MultiplayerMath';
 import MultiplayerTyping from '@/pages/MultiplayerTyping';
+import MultiplayerBlast from '@/pages/MultiplayerBlast';
 import type { MultiplayerRoom } from '@/types/multiplayer';
 
 export default function MultiplayerGame() {
@@ -41,5 +42,6 @@ export default function MultiplayerGame() {
   }
 
   if (room.game_type === 'math-buzzer') return <MultiplayerMath room={room} />;
+  if (room.game_type === 'blast-arena') return <MultiplayerBlast room={room} />;
   return <MultiplayerTyping room={room} />;
 }

@@ -62,5 +62,7 @@ export const GAMES: GameConfig[] = [
       accuracy > 0 ? Math.min(Math.floor(damage / 10), XP_PER_SESSION_CAP) : 0,
     sessionCapPerDay: DAILY_SESSION_CAP,
     xpCapPerSession: XP_PER_SESSION_CAP,
+    multiplayerRoute: '/games/room/new?game=blast-arena',
+    multiplayerGameType: 'blast-arena',
   },
 ];

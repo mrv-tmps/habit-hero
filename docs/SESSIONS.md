@@ -4,6 +4,29 @@ Chronological log of dev sessions. Latest on top.
 
 ---
 
+## Session 9 — 2026-07-09
+**Goal:** Blast Arena multiplayer (brief: `.claude/sessions/session-9-blast-arena-multiplayer.md`)
+
+### Work done
+- Migration `20260709000000_add_blast_arena_game_type.sql`: extends the `multiplayer_rooms.game_type` CHECK constraint with `'blast-arena'`
+- `src/types/multiplayer.ts`: `shot_fired` (payload carries `vx/vy` — trig resolved on the shooter's client), `turn_resolved` (host HP reconciliation), `turn_skipped` events
+- `src/hooks/useBlastEngine.ts`: multiplayer extension points — `onTurnResolved`/`onTurnSkipped` callbacks, `autoSkipTurns` (host-only timer authority), `skipCurrentTurn`/`forceSkipTurn`/`reconcileHp`, shooter snapped to shot origin (remote clients don't see mid-turn walking)
+- `src/hooks/useMultiplayerBlast.ts`: mirrors `useMultiplayerMath` — ready-gate, room-seed terrain, per-turn shot broadcast + deterministic replay via `applyRemoteShot`, host-authoritative outcomes and skips, rankings (winner first, then by damage dealt), position-multiplier XP with daily cap
+- `src/pages/MultiplayerBlast.tsx`: shared ReadyScreen/MultiplayerResults, player strip (color chip, HP bar, skull, crosshair on active turn), spectate state on others' turns
+- `MultiplayerResults`: optional `title` prop + `'dmg'` score unit (was hardcoded "Race Complete!")
+- `CreateRoom`: blast option — difficulty select, 2–4 player cap, no session-length (last-one-standing); schema built per game so the length requirement is waived
+- `MultiplayerGame` router branch, lobby label, solo page "play with friends" link, registry `multiplayerRoute`
+
+### Verified
+- `tsc` + lint clean; CreateRoom form renders correct blast fields; room creation reaches the hosted DB and fails with exactly `23514` on the game_type CHECK — confirming client wiring is complete and only the migration is pending
+
+### Follow-ups
+- **`supabase db push` required** before blast rooms can be created on the hosted project
+- Two-browser realtime smoke test after the push (shot replay determinism, skips, results)
+- Mid-turn walking is invisible to remote players until the shot fires (position snaps at fire) — Session 10 candidate: low-rate position broadcast during own turn
+
+---
+
 ## Session 8 — 2026-07-09
 **Goal:** Blast Arena solo core (brief: `.claude/sessions/session-8-blast-arena-solo.md`)
 

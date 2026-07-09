@@ -327,7 +327,9 @@ export default function RoomLobby() {
             <div className="rounded-lg bg-secondary p-3 flex flex-col gap-1">
               <p className="text-sm font-sans text-muted-foreground capitalize">
                 <span className="text-foreground font-medium">Game: </span>
-                {room.game_type === 'math-buzzer' ? 'Math Buzzer' : 'Typing Race'}
+                {room.game_type === 'math-buzzer' ? 'Math Buzzer'
+                  : room.game_type === 'blast-arena' ? 'Blast Arena'
+                  : 'Typing Race'}
               </p>
               {room.difficulty && (
                 <p className="text-sm font-sans text-muted-foreground capitalize">

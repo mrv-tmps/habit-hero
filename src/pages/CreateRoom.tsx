@@ -32,30 +32,34 @@ const CODE_LANGUAGE_LABELS: Record<CodeLanguage, string> = {
   c: 'C',
 };
 
-const schema = z
-  .object({
-    nickname: z.string().min(1, 'Nickname is required').max(16),
-    difficulty: z.enum(MP_MATH_DIFFICULTY).optional(),
-    typing_mode: z.enum(MP_TYPING_MODE).optional(),
-    code_language: z.enum(MP_CODE_LANGUAGES).optional(),
-    question_count: z.string().optional(),
-    time_limit_seconds: z.string().optional(),
-    max_players: z.string(),
-  })
-  .refine(data => data.question_count || data.time_limit_seconds, {
-    message: 'Pick a question count or a time limit',
-    path: ['question_count'],
-  })
-  .refine(data => data.typing_mode !== 'code' || !!data.code_language, {
-    message: 'Pick a language',
-    path: ['code_language'],
-  });
+// Blast rooms have no session length — matches end when one unit is left standing
+function makeSchema(isBlast: boolean) {
+  return z
+    .object({
+      nickname: z.string().min(1, 'Nickname is required').max(16),
+      difficulty: z.enum(MP_MATH_DIFFICULTY).optional(),
+      typing_mode: z.enum(MP_TYPING_MODE).optional(),
+      code_language: z.enum(MP_CODE_LANGUAGES).optional(),
+      question_count: z.string().optional(),
+      time_limit_seconds: z.string().optional(),
+      max_players: z.string(),
+    })
+    .refine(data => isBlast || data.question_count || data.time_limit_seconds, {
+      message: 'Pick a question count or a time limit',
+      path: ['question_count'],
+    })
+    .refine(data => data.typing_mode !== 'code' || !!data.code_language, {
+      message: 'Pick a language',
+      path: ['code_language'],
+    });
+}
 
-type FormValues = z.infer<typeof schema>;
+type FormValues = z.infer<ReturnType<typeof makeSchema>>;
 
 const GAME_TYPE_MAP: Record<string, GameType> = {
   math: 'math-buzzer',
   typing: 'typing-race',
+  'blast-arena': 'blast-arena',
 };
 
 export default function CreateRoom() {
@@ -70,6 +74,8 @@ export default function CreateRoom() {
   const game = GAMES.find(g => g.id === gameId) ?? GAMES[0];
   const gameType = GAME_TYPE_MAP[gameId] ?? 'math-buzzer';
   const isMath = gameType === 'math-buzzer';
+  const isBlast = gameType === 'blast-arena';
+  const isTyping = !isMath && !isBlast;
   const Icon = game.icon;
 
   const {
@@ -79,11 +85,12 @@ export default function CreateRoom() {
     watch,
     formState: { errors },
   } = useForm<FormValues>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(makeSchema(isBlast)),
     defaultValues: {
       nickname: '',
-      max_players: '8',
-      typing_mode: isMath ? undefined : 'english',
+      max_players: isBlast ? '4' : '8',
+      typing_mode: isTyping ? 'english' : undefined,
+      difficulty: isBlast ? 'medium' : undefined,
     },
   });
 
@@ -97,9 +104,9 @@ export default function CreateRoom() {
     try {
       const { room } = await createRoom({
         game_type: gameType,
-        difficulty: isMath ? (values.difficulty as MathDifficulty) : undefined,
-        typing_mode: isMath ? undefined : (values.typing_mode as TypingMode),
-        code_language: !isMath && values.typing_mode === 'code'
+        difficulty: isMath || isBlast ? (values.difficulty as MathDifficulty) : undefined,
+        typing_mode: isTyping ? (values.typing_mode as TypingMode) : undefined,
+        code_language: isTyping && values.typing_mode === 'code'
           ? (values.code_language as CodeLanguage)
           : undefined,
         question_count: values.question_count ? Number(values.question_count) : undefined,
@@ -158,8 +165,8 @@ export default function CreateRoom() {
               )}
             </div>
 
-            {/* Difficulty (math only) */}
-            {isMath && (
+            {/* Difficulty (math + blast) */}
+            {(isMath || isBlast) && (
               <div className="flex flex-col gap-1.5">
                 <Label className="text-sm font-sans">Difficulty</Label>
                 <Select
@@ -181,7 +188,7 @@ export default function CreateRoom() {
             )}
 
             {/* Mode (typing only) */}
-            {!isMath && (
+            {isTyping && (
               <div className="flex flex-col gap-1.5">
                 <Label className="text-sm font-sans">Mode</Label>
                 <Select
@@ -200,7 +207,7 @@ export default function CreateRoom() {
             )}
 
             {/* Language (typing code mode only) */}
-            {!isMath && typingMode === 'code' && (
+            {isTyping && typingMode === 'code' && (
               <div className="flex flex-col gap-1.5">
                 <Label className="text-sm font-sans">Language</Label>
                 <Select onValueChange={v => setValue('code_language', v as CodeLanguage)}>
@@ -221,7 +228,8 @@ export default function CreateRoom() {
               </div>
             )}
 
-            {/* Session length */}
+            {/* Session length (not applicable to blast: last one standing) */}
+            {!isBlast && (
             <div className="flex flex-col gap-2">
               <Label className="text-sm font-sans">Session length</Label>
 
@@ -273,19 +281,20 @@ export default function CreateRoom() {
                 <p className="text-destructive text-xs">{errors.question_count.message}</p>
               )}
             </div>
+            )}
 
             {/* Max players */}
             <div className="flex flex-col gap-1.5">
               <Label className="text-sm font-sans">Max players</Label>
               <Select
                 onValueChange={v => setValue('max_players', v)}
-                defaultValue="8"
+                defaultValue={isBlast ? '4' : '8'}
               >
                 <SelectTrigger className="cursor-pointer">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {[2, 4, 6, 8].map(n => (
+                  {(isBlast ? [2, 3, 4] : [2, 4, 6, 8]).map(n => (
                     <SelectItem key={n} value={String(n)} className="cursor-pointer">
                       {n} players
                     </SelectItem>

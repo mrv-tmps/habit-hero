@@ -37,6 +37,11 @@ interface UseBlastEngineArgs {
   startAt: number;
   unitInits: BlastUnitInit[];
   onShotCommitted?: (input: ShotInput, turnIndex: number) => void;
+  // Multiplayer: host reconciliation broadcast after each shot resolves
+  onTurnResolved?: (hp: Record<string, number>, turnIndex: number) => void;
+  // Multiplayer: host announces timer/absence skips; non-hosts wait for the event
+  onTurnSkipped?: (turnIndex: number) => void;
+  autoSkipTurns?: boolean;
 }
 
 export interface SimStateSnapshot {
@@ -60,6 +65,9 @@ interface UseBlastEngineReturn {
   staminaLeft: number;
   commitShot: (vx: number, vy: number) => void;
   applyRemoteShot: (input: ShotInput) => void;
+  skipCurrentTurn: () => void;
+  forceSkipTurn: (turnIndex: number) => void;
+  reconcileHp: (hp: Record<string, number>) => void;
   setWalkHeld: (dir: -1 | 0 | 1) => void;
   updateAim: (dx: number, dy: number) => void;
   clearAim: () => void;
@@ -81,7 +89,14 @@ export function useBlastEngine({
   startAt,
   unitInits,
   onShotCommitted,
+  onTurnResolved,
+  onTurnSkipped,
+  autoSkipTurns = true,
 }: UseBlastEngineArgs): UseBlastEngineReturn {
+  const onTurnResolvedRef = useRef(onTurnResolved);
+  onTurnResolvedRef.current = onTurnResolved;
+  const onTurnSkippedRef = useRef(onTurnSkipped);
+  onTurnSkippedRef.current = onTurnSkipped;
   // ── Simulation state (refs — the rAF renderer reads these; never setState per frame)
   const terrainRef = useRef<Uint8Array>(new Uint8Array(0));
   const unitsRef = useRef<UnitState[]>([]);
@@ -293,12 +308,20 @@ export function useBlastEngine({
 
     settleUnits(terrain, units);
     syncUnits();
+    onTurnResolvedRef.current?.(
+      Object.fromEntries(units.map(u => [u.id, u.hp])),
+      turnIndexRef.current,
+    );
     advanceTurn();
   }, [advanceTurn, repaintTerrain, syncUnits]);
 
   const fireShot = useCallback((input: ShotInput) => {
     if (phaseRef.current !== 'aiming') return;
     const shooter = unitsRef.current[activeIdxRef.current];
+    // Snap the shooter to the shot origin — remote clients don't see mid-turn walking,
+    // so the payload's origin is the agreed position for this turn's simulation
+    shooter.x = input.x;
+    shooter.y = input.y + BA_UNIT_H;
     const result = simulateShot(
       input,
       terrainRef.current,
@@ -353,6 +376,36 @@ export function useBlastEngine({
     previewRef.current = null;
   }, []);
 
+  const skipCurrentTurn = useCallback(() => {
+    if (phaseRef.current !== 'aiming') return;
+    previewRef.current = null;
+    onTurnSkippedRef.current?.(turnIndexRef.current);
+    advanceTurn();
+  }, [advanceTurn]);
+
+  // Remote skip: only honored if we're still on that turn (dedupe/ordering guard)
+  const forceSkipTurn = useCallback((turnIdx: number) => {
+    if (phaseRef.current !== 'aiming' || turnIndexRef.current !== turnIdx) return;
+    previewRef.current = null;
+    advanceTurn();
+  }, [advanceTurn]);
+
+  // Host-authoritative safety net: overwrite local HP with the host's values
+  const reconcileHp = useCallback((hp: Record<string, number>) => {
+    let changed = false;
+    for (const unit of unitsRef.current) {
+      if (unit.id in hp && unit.hp !== hp[unit.id]) {
+        unit.hp = hp[unit.id];
+        changed = true;
+      }
+    }
+    if (!changed) return;
+    syncUnits();
+    if (unitsRef.current.filter(u => u.hp > 0).length <= 1 && phaseRef.current !== 'done') {
+      finishGame();
+    }
+  }, [syncUnits, finishGame]);
+
   const setWeapon = useCallback((w: BlastWeaponId) => {
     selectedWeaponRef.current = w;
     setSelectedWeapon(w);
@@ -393,11 +446,15 @@ export function useBlastEngine({
       if (leftMs <= 0) {
         clearInterval(interval);
         previewRef.current = null;
-        advanceTurn();
+        if (autoSkipTurns) {
+          onTurnSkippedRef.current?.(turnIndexRef.current);
+          advanceTurn();
+        }
+        // Non-authoritative clients wait for the host's turn_skipped event
       }
     }, 250);
     return () => clearInterval(interval);
-  }, [phase, turnIndex, advanceTurn]);
+  }, [phase, turnIndex, advanceTurn, autoSkipTurns]);
 
   // ── Walking (interval, not rAF — discrete steps, throttled state sync)
   useEffect(() => {
@@ -542,6 +599,9 @@ export function useBlastEngine({
     staminaLeft,
     commitShot,
     applyRemoteShot,
+    skipCurrentTurn,
+    forceSkipTurn,
+    reconcileHp,
     setWalkHeld,
     updateAim,
     clearAim,
