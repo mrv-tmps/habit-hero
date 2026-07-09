@@ -4,6 +4,36 @@ Chronological log of dev sessions. Latest on top.
 
 ---
 
+## Session 8 — 2026-07-09
+**Goal:** Blast Arena solo core (brief: `.claude/sessions/session-8-blast-arena-solo.md`)
+
+### Work done
+- `src/config/constants.ts`: `BA_*` block — canvas size (320×180), physics (gravity/wind/60Hz), turn time, HP, stamina, `BA_WEAPONS` (bazooka/grenade/boot), `BA_DIFFICULTY_CONFIG` (AI aim error)
+- `src/lib/blastTerrain.ts`: seeded 1-bit `Uint8Array` terrain (smoothstep-interpolated control points — deliberately trig-free), `carveCircle`, `surfaceYAt`, `spawnPositions`
+- `src/lib/blastSim.ts`: pure deterministic shot simulation — axis-separated movement, grenade bounce, fuses, per-unit damage falloff + knockback, `windAt(seed, turnIndex)`, `settleUnits`; no `Math.sin/cos/pow` anywhere in the step loop (payload carries `vx/vy`)
+- `src/lib/blastAi.ts`: candidate-search AI — samples ~45 launch velocities through the real sim, picks the closest landing, blurs with difficulty-scaled error; boot when adjacent
+- `src/hooks/useBlastEngine.ts`: phase machine (countdown/aiming/projectile/done), rAF renderer (refs only, setState on discrete events), offscreen terrain canvas, aim preview via truncated real sim, shot playback, sudden death, walk with slope climbing
+- `src/components/blast/BlastCanvas.tsx`: integer-scaled pixelated canvas, slingshot pointer drag (mouse + touch unified)
+- `src/components/blast/BlastHud.tsx`: turn banner, wind indicator, turn timer, weapon pills (1/2/3 hotkeys), stamina bar, coarse-pointer walk buttons
+- `src/pages/BlastArena.tsx`: start card (difficulty, best wins, stat picker), match wrapper (AI turn driver, keyboard controls), results card with XP save
+- Registry entry (`Bomb` icon, `strength` stat), `/games/blast-arena` public route, `'blast-arena'` in `GameType`, `--ba-*` tokens + `data-mode="arcade"` + `pixelated`/`countdown-pop` CSS
+- Fixed `.claude/launch.json` port mismatch (8082 → 8080, Session 4 follow-up)
+
+### Key decisions
+- Canvas colors sampled from CSS tokens via `getComputedStyle` at mount — the sanctioned escape hatch for the no-raw-hex rule
+- XP: `accuracy` column overloaded as win flag (100 = won, 0 = lost); formula `floor(damage/10)` capped, wins only
+- Boot implemented as a short-fuse non-carving projectile so all weapons share one sim path
+- Turn timer expiry skips the turn (no auto-fire)
+
+### Verified in browser
+- Terrain renders + carves, AI fights back, full match to results screen, mobile 375px scale-1 with no overflow, keyboard walking, no console errors; `tsc` + lint clean (remaining lint errors are pre-existing)
+
+### Follow-ups
+- Walk buttons only appear on `pointer: coarse` devices — untestable in desktop emulation, needs a real-device check
+- Session 9: multiplayer (brief ready)
+
+---
+
 ## Session 4 — 2026-07-07
 **Goal:** Solo code typing mode (brief: `.claude/sessions/session-4-code-typing-mode.md`)
 
