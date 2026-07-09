@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { Trophy, Medal, Award, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
 import { useMultiplayerRoom, getStoredToken } from '@/hooks/useMultiplayerRoom';
-import { useRealtimeRoom } from '@/hooks/useRealtimeRoom';
 import { slotColor } from '@/components/multiplayer/playerColors';
 import type { MultiplayerParticipant, RankedResult, MultiplayerRoom } from '@/types/multiplayer';
 import { cn } from '@/lib/utils';
@@ -35,7 +35,6 @@ export default function MultiplayerResults({
   const navigate = useNavigate();
   const { user } = useAuth();
   const { resetRoomForRematch } = useMultiplayerRoom();
-  const { broadcast, onEvent } = useRealtimeRoom(room.code);
   const [isResetting, setIsResetting] = useState(false);
 
   const isHost = useMemo(
@@ -43,13 +42,33 @@ export default function MultiplayerResults({
     [participants, ownNickname],
   );
 
-  // Non-host players follow the host back to the lobby when a rematch is called.
+  // On rematch the host flips the room status back to 'waiting'. Every client
+  // watches that DB change directly rather than a broadcast — a broadcast can be
+  // dropped when the host navigates away mid-send, which stranded other players.
   useEffect(() => {
-    const unsub = onEvent(event => {
-      if (event.type === 'rematch') navigate(`/games/room/${room.code}`);
-    });
-    return unsub;
-  }, [onEvent, navigate, room.code]);
+    const channel = supabase
+      .channel(`room-rematch:${room.id}`)
+      .on(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        'postgres_changes' as any,
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'multiplayer_rooms',
+          filter: `id=eq.${room.id}`,
+        },
+        (payload: { new?: { status?: string } }) => {
+          if (payload.new?.status === 'waiting') {
+            navigate(`/games/room/${room.code}`);
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [room.id, room.code, navigate]);
 
   async function handlePlayAgain() {
     const token = getStoredToken(room.code);
@@ -58,7 +77,7 @@ export default function MultiplayerResults({
     try {
       const seed = Math.floor(Math.random() * 2 ** 31);
       await resetRoomForRematch(room.id, token, seed);
-      broadcast({ type: 'rematch' });
+      // Host leaves immediately; other clients follow via the status change above.
       navigate(`/games/room/${room.code}`);
     } catch {
       setIsResetting(false);
