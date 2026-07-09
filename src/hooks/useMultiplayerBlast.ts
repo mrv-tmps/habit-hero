@@ -15,6 +15,7 @@ import {
   MP_XP_MULTIPLIER_2ND,
   MP_XP_MULTIPLIER_DEFAULT,
   BA_COUNTDOWN_MS,
+  BA_SKIP_GRACE_MS,
 } from '@/config/constants';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -47,13 +48,14 @@ export function useMultiplayerBlast(room: MultiplayerRoom): UseMultiplayerBlastR
   const [rankings, setRankings] = useState<RankedResult[]>([]);
   const [readyNicknames, setReadyNicknames] = useState<string[]>([]);
   const [startAt, setStartAt] = useState(0);
+  // State, not just a ref: the engine's skip authority depends on it at render time
+  const [isHost, setIsHost] = useState(false);
 
   const isHostRef = useRef(false);
   const ownParticipantRef = useRef<MultiplayerParticipant | null>(null);
   const participantsRef = useRef<MultiplayerParticipant[]>([]);
   const readyNicknamesRef = useRef<Set<string>>(new Set());
   const hasEndedRef = useRef(false);
-  const processedShotTurnRef = useRef(-1);
 
   // Turn order = participant created_at order (fetchParticipants sorts ascending);
   // nickname doubles as the unit id — unique per room, shared by every client.
@@ -72,16 +74,13 @@ export function useMultiplayerBlast(room: MultiplayerRoom): UseMultiplayerBlastR
     seed: room.seed,
     startAt,
     unitInits,
-    autoSkipTurns: isHostRef.current,
+    autoSkipTurns: isHost,
+    skipGraceMs: BA_SKIP_GRACE_MS,
     onShotCommitted: (input: ShotInput, turnIndex: number) => {
-      processedShotTurnRef.current = turnIndex;
       broadcast({ type: 'shot_fired', turn_index: turnIndex, ...input });
     },
-    onTurnResolved: (hp, turnIndex) => {
-      if (isHostRef.current) broadcast({ type: 'turn_resolved', turn_index: turnIndex, hp });
-    },
-    onTurnSkipped: turnIndex => {
-      if (isHostRef.current) broadcast({ type: 'turn_skipped', turn_index: turnIndex });
+    onTurnResolved: resolution => {
+      if (isHostRef.current) broadcast({ type: 'turn_resolved', resolution });
     },
   });
 
@@ -112,6 +111,7 @@ export function useMultiplayerBlast(room: MultiplayerRoom): UseMultiplayerBlastR
       setOwnParticipant(p);
       ownParticipantRef.current = p;
       isHostRef.current = p?.is_host ?? false;
+      setIsHost(p?.is_host ?? false);
     });
 
     fetchParticipants(room.id).then(parts => {
@@ -232,24 +232,23 @@ export function useMultiplayerBlast(room: MultiplayerRoom): UseMultiplayerBlastR
       }
 
       if (event.type === 'shot_fired') {
-        // Every client replays the identical deterministic sim
-        if (processedShotTurnRef.current >= event.turn_index) return;
-        processedShotTurnRef.current = event.turn_index;
-        engineRef.current.applyRemoteShot({
-          weapon: event.weapon as BlastWeaponId,
-          x: event.x,
-          y: event.y,
-          vx: event.vx,
-          vy: event.vy,
-        });
+        // Every client replays the identical deterministic sim; the engine rejects
+        // shots that don't match its current turn (late arrivals, duplicates)
+        engineRef.current.applyRemoteShot(
+          {
+            weapon: event.weapon as BlastWeaponId,
+            x: event.x,
+            y: event.y,
+            vx: event.vx,
+            vy: event.vy,
+          },
+          event.turn_index,
+        );
       }
 
       if (event.type === 'turn_resolved') {
-        if (!isHostRef.current) engineRef.current.reconcileHp(event.hp);
-      }
-
-      if (event.type === 'turn_skipped') {
-        if (!isHostRef.current) engineRef.current.forceSkipTurn(event.turn_index);
+        // Authoritative turn boundary from the host — drift self-heals here
+        if (!isHostRef.current) engineRef.current.applyTurnResolution(event.resolution);
       }
 
       if (event.type === 'game_end') {

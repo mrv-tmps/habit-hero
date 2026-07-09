@@ -4,6 +4,28 @@ Chronological log of dev sessions. Latest on top.
 
 ---
 
+## Session 9 fix — 2026-07-09
+**Goal:** Fix Blast Arena multiplayer desync (players drifting to different turns/moves mid-game)
+
+### Root causes
+- Turn advancement was time-and-playback driven per client: each window advanced turns on its own clock, so any hiccup compounded permanently
+- `applyRemoteShot` didn't validate the turn index — a late shot applied to the wrong turn with the wrong shooter/wind, teleporting the wrong unit to the shot origin
+- Skip/shot race: a shot fired near the 30s deadline crossed the host's `turn_skipped` in flight — one client played the shot, the other a skip
+- Shot results were applied when the rAF *animation* finished; browsers suspend rAF in hidden windows, so an unfocused window stopped resolving turns
+- `autoSkipTurns: isHostRef.current` read a mutable ref at render time — the host could permanently end up without skip authority
+
+### Fix (`useBlastEngine` rewrite + `useMultiplayerBlast`)
+- `turn_resolved` is now a full authoritative turn boundary (`TurnResolution`: hp, positions, carve, next turn, next shooter). Non-hosts snap to it every turn — any drift self-heals at the next boundary
+- Shots are sequenced: `shot_fired` carries `turn_index`; the engine rejects shots that don't match its current turn
+- Host waits `BA_SKIP_GRACE_MS` (2s) past the deadline before skipping, absorbing in-flight shots; `turn_skipped` event removed (skips are just resolutions with no carve)
+- State application decoupled from animation: a `setTimeout` fallback applies the shot result even when rAF is suspended; a `BA_RESOLUTION_FORCE_MS` (5s) timer force-applies a pending host resolution in throttled tabs
+- Host flag is React state, not a ref read during render
+
+### Known limitation
+- A client hidden across *multiple* consecutive turns may miss intermediate terrain carves (hp/positions still reconcile). Full carve-history replay is a Session 10 candidate.
+
+---
+
 ## Session 9 — 2026-07-09
 **Goal:** Blast Arena multiplayer (brief: `.claude/sessions/session-9-blast-arena-multiplayer.md`)
 

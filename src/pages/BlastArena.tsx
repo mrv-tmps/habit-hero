@@ -69,7 +69,7 @@ function BlastMatch({ seed, startAt, difficulty, characterName, onEnd }: MatchPr
   const engine = useBlastEngine({ seed, startAt, unitInits });
 
   const {
-    phase, countdown, activeUnit, wind, turnTimeLeft, winner, damageDealt,
+    phase, countdown, turnIndex, activeUnit, wind, turnTimeLeft, winner, damageDealt,
     selectedWeapon, setWeapon, staminaLeft,
     commitShot, applyRemoteShot, setWalkHeld, updateAim, clearAim,
     registerCanvas, getSimState,
@@ -85,10 +85,10 @@ function BlastMatch({ seed, startAt, difficulty, characterName, onEnd }: MatchPr
       const shooter = units.find(u => u.id === activeUnit.id);
       const target = units.find(u => u.isLocal && u.hp > 0);
       if (!shooter || !target) return;
-      applyRemoteShot(chooseAiShot(terrain, units, shooter, target, currentWind, difficulty));
+      applyRemoteShot(chooseAiShot(terrain, units, shooter, target, currentWind, difficulty), turnIndex);
     }, BA_AI_THINK_MS);
     return () => clearTimeout(timeout);
-  }, [phase, activeUnit, difficulty, getSimState, applyRemoteShot]);
+  }, [phase, turnIndex, activeUnit, difficulty, getSimState, applyRemoteShot]);
 
   // Keyboard: arrows/AD walk, 1/2/3 weapon
   useEffect(() => {

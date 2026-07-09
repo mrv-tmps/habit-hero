@@ -46,6 +46,17 @@ export interface Carve {
   r: number;
 }
 
+// Authoritative turn boundary broadcast by the host after every shot or skip.
+// Non-hosts snap to this state, so drift (missed events, throttled tabs) self-heals.
+export interface TurnResolution {
+  resolved_turn: number;
+  next_turn: number;
+  next_active_id: string;
+  hp: Record<string, number>;
+  positions: Record<string, { x: number; y: number }>;
+  carve: Carve | null;
+}
+
 export interface ShotResult {
   frames: SimFrame[];
   explosionAt: { x: number; y: number } | null;

@@ -3,6 +3,7 @@ import {
   BA_CANVAS_W,
   BA_CANVAS_H,
   BA_MAX_ROUNDS,
+  BA_RESOLUTION_FORCE_MS,
   BA_SUDDEN_DEATH_DRAIN,
   BA_TURN_TIME_MS,
   BA_UNIT_HP,
@@ -19,6 +20,7 @@ import {
   windAt,
   type ShotInput,
   type ShotResult,
+  type TurnResolution,
   type UnitState,
   type SimFrame,
 } from '@/lib/blastSim';
@@ -37,11 +39,10 @@ interface UseBlastEngineArgs {
   startAt: number;
   unitInits: BlastUnitInit[];
   onShotCommitted?: (input: ShotInput, turnIndex: number) => void;
-  // Multiplayer: host reconciliation broadcast after each shot resolves
-  onTurnResolved?: (hp: Record<string, number>, turnIndex: number) => void;
-  // Multiplayer: host announces timer/absence skips; non-hosts wait for the event
-  onTurnSkipped?: (turnIndex: number) => void;
+  // Multiplayer host: broadcast the authoritative turn boundary after every shot/skip
+  onTurnResolved?: (resolution: TurnResolution) => void;
   autoSkipTurns?: boolean;
+  skipGraceMs?: number;
 }
 
 export interface SimStateSnapshot {
@@ -64,10 +65,9 @@ interface UseBlastEngineReturn {
   setWeapon: (w: BlastWeaponId) => void;
   staminaLeft: number;
   commitShot: (vx: number, vy: number) => void;
-  applyRemoteShot: (input: ShotInput) => void;
+  applyRemoteShot: (input: ShotInput, turnIndex: number) => void;
   skipCurrentTurn: () => void;
-  forceSkipTurn: (turnIndex: number) => void;
-  reconcileHp: (hp: Record<string, number>) => void;
+  applyTurnResolution: (resolution: TurnResolution) => void;
   setWalkHeld: (dir: -1 | 0 | 1) => void;
   updateAim: (dx: number, dy: number) => void;
   clearAim: () => void;
@@ -79,9 +79,18 @@ const WALK_TICK_MS = 50;
 const WALK_STEP_PX = 1.5;
 const PREVIEW_STEPS = 90;
 const EXPLOSION_FLASH_MS = 350;
+const SIM_FPS = 60;
 
 function readToken(css: CSSStyleDeclaration, name: string): string {
   return `hsl(${css.getPropertyValue(name).trim()})`;
+}
+
+interface Playback {
+  result: ShotResult;
+  weapon: BlastWeaponId;
+  shooterId: string;
+  turnIndex: number;
+  startedAt: number;
 }
 
 export function useBlastEngine({
@@ -90,24 +99,21 @@ export function useBlastEngine({
   unitInits,
   onShotCommitted,
   onTurnResolved,
-  onTurnSkipped,
   autoSkipTurns = true,
+  skipGraceMs = 0,
 }: UseBlastEngineArgs): UseBlastEngineReturn {
   const onTurnResolvedRef = useRef(onTurnResolved);
   onTurnResolvedRef.current = onTurnResolved;
-  const onTurnSkippedRef = useRef(onTurnSkipped);
-  onTurnSkippedRef.current = onTurnSkipped;
+
   // ── Simulation state (refs — the rAF renderer reads these; never setState per frame)
   const terrainRef = useRef<Uint8Array>(new Uint8Array(0));
   const unitsRef = useRef<UnitState[]>([]);
   const windRef = useRef(0);
   const damageDealtRef = useRef<Record<string, number>>({});
-  const playbackRef = useRef<{
-    result: ShotResult;
-    weapon: BlastWeaponId;
-    shooterId: string;
-    startedAt: number;
-  } | null>(null);
+  const playbackRef = useRef<Playback | null>(null);
+  const pendingResolutionRef = useRef<TurnResolution | null>(null);
+  const forceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastCarvedTurnRef = useRef(-1);
   const explosionRef = useRef<{ x: number; y: number; r: number; endsAt: number } | null>(null);
   const previewRef = useRef<SimFrame[] | null>(null);
   const walkHeldRef = useRef<-1 | 0 | 1>(0);
@@ -145,25 +151,6 @@ export function useBlastEngine({
     setUnitsView(unitsRef.current.map(u => ({ ...u })));
   }, []);
 
-  // ── World init (re-runs when the roster arrives — multiplayer loads participants async)
-  useEffect(() => {
-    if (unitInits.length === 0) return;
-    const terrain = generateTerrain(seed);
-    terrainRef.current = terrain;
-    const spawns = spawnPositions(seed, terrain, unitInits.length);
-    unitsRef.current = unitInits.map((init, i) => ({
-      ...init,
-      hp: BA_UNIT_HP,
-      x: spawns[i].x,
-      y: spawns[i].y,
-      facing: (i % 2 === 0 ? 1 : -1) as 1 | -1,
-    }));
-    damageDealtRef.current = Object.fromEntries(unitInits.map(u => [u.id, 0]));
-    repaintTerrain();
-    syncUnits();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seed, unitInits]);
-
   // ── Terrain offscreen canvas
   const repaintTerrain = useCallback(() => {
     let off = terrainCanvasRef.current;
@@ -192,6 +179,25 @@ export function useBlastEngine({
     }
     ctx.fill();
   }, []);
+
+  // ── World init (re-runs when the roster arrives — multiplayer loads participants async)
+  useEffect(() => {
+    if (unitInits.length === 0) return;
+    const terrain = generateTerrain(seed);
+    terrainRef.current = terrain;
+    const spawns = spawnPositions(seed, terrain, unitInits.length);
+    unitsRef.current = unitInits.map((init, i) => ({
+      ...init,
+      hp: BA_UNIT_HP,
+      x: spawns[i].x,
+      y: spawns[i].y,
+      facing: (i % 2 === 0 ? 1 : -1) as 1 | -1,
+    }));
+    damageDealtRef.current = Object.fromEntries(unitInits.map(u => [u.id, 0]));
+    lastCarvedTurnRef.current = -1;
+    repaintTerrain();
+    syncUnits();
+  }, [seed, unitInits, repaintTerrain, syncUnits]);
 
   // ── Palette sampled from CSS tokens once (design rule: no hex literals in TS)
   useEffect(() => {
@@ -236,12 +242,13 @@ export function useBlastEngine({
     setPhase('done');
   }, [setPhase, syncUnits]);
 
-  const advanceTurn = useCallback(() => {
+  // Advances to the next turn; returns false when the game ended instead
+  const advanceTurn = useCallback((): boolean => {
     const units = unitsRef.current;
     const aliveCount = units.filter(u => u.hp > 0).length;
     if (aliveCount <= 1) {
       finishGame();
-      return;
+      return false;
     }
 
     let nextTurn = turnIndexRef.current + 1;
@@ -260,21 +267,38 @@ export function useBlastEngine({
       const survivors = units.filter(u => u.hp > 0);
       if (survivors.length <= 1) {
         finishGame();
-        return;
+        return false;
       }
-      if (units[nextIdx].hp <= 0) {
-        while (units[nextIdx].hp <= 0) {
-          nextIdx = (nextIdx + 1) % units.length;
-          nextTurn++;
-        }
+      while (units[nextIdx].hp <= 0) {
+        nextIdx = (nextIdx + 1) % units.length;
+        nextTurn++;
       }
     }
 
     startTurnAt(nextIdx, nextTurn);
+    return true;
   }, [finishGame, startTurnAt, syncUnits]);
 
-  // ── Shot resolution (applied after playback finishes)
-  const applyShotResult = useCallback((result: ShotResult, shooterId: string) => {
+  const buildResolution = useCallback((resolvedTurn: number, carve: TurnResolution['carve']): TurnResolution => ({
+    resolved_turn: resolvedTurn,
+    next_turn: turnIndexRef.current,
+    next_active_id: unitsRef.current[activeIdxRef.current]?.id ?? '',
+    hp: Object.fromEntries(unitsRef.current.map(u => [u.id, u.hp])),
+    positions: Object.fromEntries(unitsRef.current.map(u => [u.id, { x: u.x, y: u.y }])),
+    carve,
+  }), []);
+
+  const clearPendingResolution = useCallback(() => {
+    pendingResolutionRef.current = null;
+    if (forceTimerRef.current) {
+      clearTimeout(forceTimerRef.current);
+      forceTimerRef.current = null;
+    }
+  }, []);
+
+  // ── Shot resolution (applied when playback finishes or the fallback timer fires)
+  const applyShotResult = useCallback((playback: Playback) => {
+    const { result, shooterId, turnIndex: resolvedTurn } = playback;
     const terrain = terrainRef.current;
     const units = unitsRef.current;
 
@@ -287,10 +311,13 @@ export function useBlastEngine({
         endsAt: Date.now() + EXPLOSION_FLASH_MS,
       };
     }
-    for (const carve of result.carves) {
-      carveCircle(terrain, carve.x, carve.y, carve.r);
+    if (result.carves.length > 0 && lastCarvedTurnRef.current < resolvedTurn) {
+      for (const carve of result.carves) {
+        carveCircle(terrain, carve.x, carve.y, carve.r);
+      }
+      lastCarvedTurnRef.current = resolvedTurn;
+      repaintTerrain();
     }
-    if (result.carves.length > 0) repaintTerrain();
 
     let dealtToOthers = 0;
     for (const unit of units) {
@@ -309,12 +336,78 @@ export function useBlastEngine({
 
     settleUnits(terrain, units);
     syncUnits();
-    onTurnResolvedRef.current?.(
-      Object.fromEntries(units.map(u => [u.id, u.hp])),
-      turnIndexRef.current,
-    );
-    advanceTurn();
-  }, [advanceTurn, repaintTerrain, syncUnits]);
+
+    const advanced = advanceTurn();
+    if (advanced) {
+      onTurnResolvedRef.current?.(buildResolution(resolvedTurn, result.carves[0] ?? null));
+    }
+
+    // A host resolution may have arrived while we were animating — it wins
+    const pending = pendingResolutionRef.current;
+    if (pending && pending.resolved_turn === resolvedTurn) {
+      clearPendingResolution();
+      hardApplyResolutionRef.current(pending);
+    }
+  }, [advanceTurn, buildResolution, clearPendingResolution, repaintTerrain, syncUnits]);
+
+  const applyShotResultRef = useRef(applyShotResult);
+  applyShotResultRef.current = applyShotResult;
+
+  // ── Authoritative resolution from the host: snap to its state unconditionally
+  const hardApplyResolution = useCallback((res: TurnResolution) => {
+    if (phaseRef.current === 'done') return;
+    playbackRef.current = null;
+
+    if (res.carve && lastCarvedTurnRef.current < res.resolved_turn) {
+      carveCircle(terrainRef.current, res.carve.x, res.carve.y, res.carve.r);
+      lastCarvedTurnRef.current = res.resolved_turn;
+      repaintTerrain();
+    }
+    for (const unit of unitsRef.current) {
+      if (unit.id in res.hp) unit.hp = res.hp[unit.id];
+      const pos = res.positions[unit.id];
+      if (pos) {
+        unit.x = pos.x;
+        unit.y = pos.y;
+      }
+    }
+    syncUnits();
+
+    if (unitsRef.current.filter(u => u.hp > 0).length <= 1) {
+      finishGame();
+      return;
+    }
+    const nextIdx = unitsRef.current.findIndex(u => u.id === res.next_active_id);
+    if (nextIdx >= 0) startTurnAt(nextIdx, res.next_turn);
+  }, [finishGame, repaintTerrain, startTurnAt, syncUnits]);
+
+  const hardApplyResolutionRef = useRef(hardApplyResolution);
+  hardApplyResolutionRef.current = hardApplyResolution;
+
+  const applyTurnResolution = useCallback((res: TurnResolution) => {
+    // Stale or duplicate boundary — we're already past it
+    if (res.next_turn <= turnIndexRef.current && phaseRef.current === 'aiming') return;
+    if (phaseRef.current === 'done') return;
+
+    const playback = playbackRef.current;
+    if (playback && playback.turnIndex === res.resolved_turn) {
+      // We're animating this same shot: let it finish, then reconcile. A force timer
+      // covers throttled background tabs where the animation never completes.
+      pendingResolutionRef.current = res;
+      if (forceTimerRef.current) clearTimeout(forceTimerRef.current);
+      forceTimerRef.current = setTimeout(() => {
+        const pending = pendingResolutionRef.current;
+        if (pending) {
+          clearPendingResolution();
+          hardApplyResolutionRef.current(pending);
+        }
+      }, BA_RESOLUTION_FORCE_MS);
+      return;
+    }
+
+    clearPendingResolution();
+    hardApplyResolution(res);
+  }, [clearPendingResolution, hardApplyResolution]);
 
   const fireShot = useCallback((input: ShotInput) => {
     if (phaseRef.current !== 'aiming') return;
@@ -331,13 +424,24 @@ export function useBlastEngine({
       shooter.id,
     );
     previewRef.current = null;
-    playbackRef.current = {
+    const playback: Playback = {
       result,
       weapon: input.weapon,
       shooterId: shooter.id,
+      turnIndex: turnIndexRef.current,
       startedAt: Date.now(),
     };
+    playbackRef.current = playback;
     setPhase('projectile');
+
+    // Fallback: rAF is suspended in hidden tabs — state must advance regardless
+    const durationMs = (result.frames.length / SIM_FPS) * 1000;
+    setTimeout(() => {
+      if (playbackRef.current === playback) {
+        playbackRef.current = null;
+        applyShotResultRef.current(playback);
+      }
+    }, durationMs + 600);
   }, [setPhase]);
 
   const commitShot = useCallback((vx: number, vy: number) => {
@@ -354,9 +458,21 @@ export function useBlastEngine({
     fireShot(input);
   }, [fireShot, onShotCommitted]);
 
-  const applyRemoteShot = useCallback((input: ShotInput) => {
+  // Remote shots are only valid for the turn they were fired in
+  const applyRemoteShot = useCallback((input: ShotInput, turnIdx: number) => {
+    if (turnIdx !== turnIndexRef.current || phaseRef.current !== 'aiming') return;
     fireShot(input);
   }, [fireShot]);
+
+  const skipCurrentTurn = useCallback(() => {
+    if (phaseRef.current !== 'aiming') return;
+    const resolvedTurn = turnIndexRef.current;
+    previewRef.current = null;
+    const advanced = advanceTurn();
+    if (advanced) {
+      onTurnResolvedRef.current?.(buildResolution(resolvedTurn, null));
+    }
+  }, [advanceTurn, buildResolution]);
 
   // ── Aim preview: truncated run of the real sim so the preview never lies
   const updateAim = useCallback((vx: number, vy: number) => {
@@ -376,36 +492,6 @@ export function useBlastEngine({
   const clearAim = useCallback(() => {
     previewRef.current = null;
   }, []);
-
-  const skipCurrentTurn = useCallback(() => {
-    if (phaseRef.current !== 'aiming') return;
-    previewRef.current = null;
-    onTurnSkippedRef.current?.(turnIndexRef.current);
-    advanceTurn();
-  }, [advanceTurn]);
-
-  // Remote skip: only honored if we're still on that turn (dedupe/ordering guard)
-  const forceSkipTurn = useCallback((turnIdx: number) => {
-    if (phaseRef.current !== 'aiming' || turnIndexRef.current !== turnIdx) return;
-    previewRef.current = null;
-    advanceTurn();
-  }, [advanceTurn]);
-
-  // Host-authoritative safety net: overwrite local HP with the host's values
-  const reconcileHp = useCallback((hp: Record<string, number>) => {
-    let changed = false;
-    for (const unit of unitsRef.current) {
-      if (unit.id in hp && unit.hp !== hp[unit.id]) {
-        unit.hp = hp[unit.id];
-        changed = true;
-      }
-    }
-    if (!changed) return;
-    syncUnits();
-    if (unitsRef.current.filter(u => u.hp > 0).length <= 1 && phaseRef.current !== 'done') {
-      finishGame();
-    }
-  }, [syncUnits, finishGame]);
 
   const setWeapon = useCallback((w: BlastWeaponId) => {
     selectedWeaponRef.current = w;
@@ -440,24 +526,19 @@ export function useBlastEngine({
     return () => clearInterval(interval);
   }, [startAt, startTurnAt]);
 
-  // ── Turn timer
+  // ── Turn timer: display for everyone; only the authority (solo player / MP host) skips
   useEffect(() => {
     if (phase !== 'aiming') return;
     const interval = setInterval(() => {
       const leftMs = turnEndsAtRef.current - Date.now();
       setTurnTimeLeft(Math.max(0, Math.ceil(leftMs / 1000)));
-      if (leftMs <= 0) {
+      if (leftMs <= -skipGraceMs && autoSkipTurns) {
         clearInterval(interval);
-        previewRef.current = null;
-        if (autoSkipTurns) {
-          onTurnSkippedRef.current?.(turnIndexRef.current);
-          advanceTurn();
-        }
-        // Non-authoritative clients wait for the host's turn_skipped event
+        skipCurrentTurn();
       }
     }, 250);
     return () => clearInterval(interval);
-  }, [phase, turnIndex, advanceTurn, autoSkipTurns]);
+  }, [phase, turnIndex, autoSkipTurns, skipGraceMs, skipCurrentTurn]);
 
   // ── Walking (interval, not rAF — discrete steps, throttled state sync)
   useEffect(() => {
@@ -488,7 +569,7 @@ export function useBlastEngine({
     return () => clearInterval(interval);
   }, [phase, turnIndex]);
 
-  // ── Renderer (rAF; reads refs only)
+  // ── Renderer (rAF; reads refs only — state application never depends on this loop)
   useEffect(() => {
     const draw = () => {
       rafRef.current = requestAnimationFrame(draw);
@@ -540,14 +621,14 @@ export function useBlastEngine({
         }
       }
 
-      // Projectile playback
+      // Projectile playback (cosmetic — the fallback timer owns state application)
       const playback = playbackRef.current;
       if (playback) {
         const elapsed = Date.now() - playback.startedAt;
-        const frameIdx = Math.floor((elapsed / 1000) * 60);
+        const frameIdx = Math.floor((elapsed / 1000) * SIM_FPS);
         if (frameIdx >= playback.result.frames.length) {
           playbackRef.current = null;
-          applyShotResult(playback.result, playback.shooterId);
+          applyShotResultRef.current(playback);
         } else {
           const frame = playback.result.frames[frameIdx];
           ctx.fillStyle = pal.explosion;
@@ -575,7 +656,12 @@ export function useBlastEngine({
     };
     rafRef.current = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [applyShotResult]);
+  }, []);
+
+  // Clear the force timer on unmount
+  useEffect(() => () => {
+    if (forceTimerRef.current) clearTimeout(forceTimerRef.current);
+  }, []);
 
   const registerCanvas = useCallback((el: HTMLCanvasElement | null) => {
     canvasRef.current = el;
@@ -603,8 +689,7 @@ export function useBlastEngine({
     commitShot,
     applyRemoteShot,
     skipCurrentTurn,
-    forceSkipTurn,
-    reconcileHp,
+    applyTurnResolution,
     setWalkHeld,
     updateAim,
     clearAim,

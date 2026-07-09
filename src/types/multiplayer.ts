@@ -1,3 +1,5 @@
+import type { TurnResolution } from '@/lib/blastSim';
+
 export type RoomStatus = 'waiting' | 'active' | 'finished';
 export type GameType = 'math-buzzer' | 'typing-race' | 'blast-arena';
 export type MathDifficulty = 'easy' | 'medium' | 'hard';
@@ -66,5 +68,4 @@ export type MultiplayerEvent =
   | { type: 'game_end'; rankings: RankedResult[] }
   | { type: 'question_advance'; question_idx: number; claimer_nickname: string }
   | BlastShotEvent
-  | { type: 'turn_resolved'; turn_index: number; hp: Record<string, number> }
-  | { type: 'turn_skipped'; turn_index: number };
+  | { type: 'turn_resolved'; resolution: TurnResolution };

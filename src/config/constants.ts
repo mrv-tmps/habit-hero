@@ -36,6 +36,10 @@ export const BA_WALK_STAMINA_PX = 40;
 export const BA_MAX_LAUNCH_SPEED = 3.4;
 export const BA_COUNTDOWN_MS = 3000;
 export const BA_AI_THINK_MS = 1000;
+// Host waits this long past the turn deadline before skipping — absorbs in-flight shots
+export const BA_SKIP_GRACE_MS = 2000;
+// Force-apply a host resolution if local playback hasn't finished (throttled background tab)
+export const BA_RESOLUTION_FORCE_MS = 5000;
 
 export interface BlastWeaponConfig {
   label: string;
