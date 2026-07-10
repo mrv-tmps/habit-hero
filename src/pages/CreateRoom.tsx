@@ -22,6 +22,7 @@ import {
   MP_TYPING_MODE,
   MP_CODE_LANGUAGES,
 } from '@/config/constants';
+import { BLAST_MAPS, RANDOM_MAP_ID } from '@/config/blastMaps';
 import { useMultiplayerRoom } from '@/hooks/useMultiplayerRoom';
 import { useAuth } from '@/contexts/AuthContext';
 import type { MathDifficulty, TypingMode, CodeLanguage, GameType } from '@/types/multiplayer';
@@ -43,6 +44,7 @@ function makeSchema(isBlast: boolean) {
       question_count: z.string().optional(),
       time_limit_seconds: z.string().optional(),
       max_players: z.string(),
+      map_id: z.string().optional(),
     })
     .refine(data => isBlast || data.question_count || data.time_limit_seconds, {
       message: 'Pick a question count or a time limit',
@@ -91,6 +93,7 @@ export default function CreateRoom() {
       max_players: isBlast ? '4' : '8',
       typing_mode: isTyping ? 'english' : undefined,
       difficulty: isBlast ? 'medium' : undefined,
+      map_id: isBlast ? RANDOM_MAP_ID : undefined,
     },
   });
 
@@ -114,6 +117,9 @@ export default function CreateRoom() {
           ? Number(values.time_limit_seconds)
           : undefined,
         max_players: Number(values.max_players),
+        map_id: isBlast && values.map_id && values.map_id !== RANDOM_MAP_ID
+          ? values.map_id
+          : null,
         nickname: values.nickname,
         user_id: user?.id ?? null,
       });
@@ -180,6 +186,29 @@ export default function CreateRoom() {
                     {MP_MATH_DIFFICULTY.map(d => (
                       <SelectItem key={d} value={d} className="cursor-pointer capitalize">
                         {d.charAt(0).toUpperCase() + d.slice(1)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Map (blast only) */}
+            {isBlast && (
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-sm font-sans">Map</Label>
+                <Select
+                  onValueChange={v => setValue('map_id', v)}
+                  defaultValue={RANDOM_MAP_ID}
+                >
+                  <SelectTrigger className="cursor-pointer">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={RANDOM_MAP_ID} className="cursor-pointer">Random</SelectItem>
+                    {BLAST_MAPS.map(m => (
+                      <SelectItem key={m.id} value={m.id} className="cursor-pointer">
+                        {m.label}
                       </SelectItem>
                     ))}
                   </SelectContent>

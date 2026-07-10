@@ -19,6 +19,7 @@ export interface CreateRoomConfig {
   question_count?: number;
   time_limit_seconds?: number;
   max_players?: number;
+  map_id?: string | null;
   nickname: string;
   user_id?: string | null;
 }
@@ -33,6 +34,7 @@ export interface RoomConfigUpdate {
   question_count: number | null;
   time_limit_seconds: number | null;
   max_players: number;
+  map_id: string | null;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -80,6 +82,7 @@ export function useMultiplayerRoom() {
           question_count: config.question_count ?? null,
           time_limit_seconds: config.time_limit_seconds ?? null,
           max_players: config.max_players ?? 8,
+          map_id: config.map_id ?? null,
           seed,
         })
         .select()
@@ -233,6 +236,7 @@ export function useMultiplayerRoom() {
       p_question_count: config.question_count,
       p_time_limit_seconds: config.time_limit_seconds,
       p_max_players: config.max_players,
+      p_map_id: config.map_id,
     });
     if (error) throw error;
   }, []);

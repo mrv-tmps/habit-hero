@@ -80,3 +80,18 @@ Reuses Session 1 infrastructure verbatim: rooms, lobby, `participant_token`, rea
 ## §10 Out of scope (v1)
 
 Teams/multiple units per player, ammo economy, fall damage, water/drowning, moving platforms, hand-drawn sprite sheets, sound, spectators, best-of-N matches.
+
+## §11 Maps (Session 14)
+
+Registry pattern in `src/config/blastMaps.ts` — adding a map never touches the engine. Each `BlastMapConfig` bundles a Session 13 terrain structure, a hazard-floor flag, a theme token scope, and a seeded backdrop painter.
+
+| Map | Structure | Hazard | Theme |
+|---|---|---|---|
+| Grasslands | hills | none | `:root` defaults (purple soil, green grass) |
+| Volcano | pillars | lava | charred reds, glowing crust, ember flecks |
+| Tundra | caverns | none | blue-grey soil, snow-white surface, snowfall flecks |
+| Orbit | islands | water (styled void) | near-black sky, alien moss, starfield |
+
+- **Theming:** each map overrides the `--ba-*` palette via `[data-ba-map="<id>"]` blocks in `index.css` (plus `--ba-deco` for decorations). The engine sets `data-ba-map` on `<html>` while a map is active and re-samples tokens via `getComputedStyle` — still zero hex literals in TS.
+- **Decorations:** seeded, trig-free pixel rects painted once onto the terrain offscreen canvas, restricted to the sky band (y < 66, above the highest terrain surface) so they never affect gameplay readability. No per-frame cost.
+- **Selection:** `multiplayer_rooms.map_id` (`NULL` = Random). Host picks in `RoomConfigPanel` / `CreateRoom`; solo picks on the start card (local state). Random resolves deterministically from the shared seed via `resolveBlastMap`, so all clients agree with no extra messages; rematch rerolls Random (fresh seed) but keeps an explicit choice.

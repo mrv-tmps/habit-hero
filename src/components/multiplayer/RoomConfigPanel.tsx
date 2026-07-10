@@ -13,6 +13,7 @@ import {
   MP_CODE_LANGUAGES,
   MP_MAX_PLAYERS,
 } from '@/config/constants';
+import { BLAST_MAPS, RANDOM_MAP_ID } from '@/config/blastMaps';
 import type { RoomConfigUpdate } from '@/hooks/useMultiplayerRoom';
 import type {
   MultiplayerRoom,
@@ -50,6 +51,7 @@ function defaultConfigFor(gameType: GameType): RoomConfigUpdate {
     question_count: null,
     time_limit_seconds: null,
     max_players: MP_MAX_PLAYERS,
+    map_id: null,
   };
   if (gameType === 'math-buzzer') return { ...base, difficulty: 'medium', question_count: 10 };
   if (gameType === 'typing-race') return { ...base, typing_mode: 'english', question_count: 10 };
@@ -72,6 +74,7 @@ export default function RoomConfigPanel({ room, playerCount, disabled, onChange 
     question_count: room.question_count,
     time_limit_seconds: room.time_limit_seconds,
     max_players: room.max_players,
+    map_id: room.map_id,
   };
 
   const isMath = room.game_type === 'math-buzzer';
@@ -128,6 +131,30 @@ export default function RoomConfigPanel({ room, playerCount, disabled, onChange 
               {MP_MATH_DIFFICULTY.map(d => (
                 <SelectItem key={d} value={d} className="cursor-pointer capitalize">
                   {d.charAt(0).toUpperCase() + d.slice(1)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {/* Map (blast only) */}
+      {isBlast && (
+        <div className="flex flex-col gap-1.5">
+          <Label className="text-xs font-sans text-muted-foreground">Map</Label>
+          <Select
+            value={current.map_id ?? RANDOM_MAP_ID}
+            disabled={disabled}
+            onValueChange={v => onChange({ ...current, map_id: v === RANDOM_MAP_ID ? null : v })}
+          >
+            <SelectTrigger className="cursor-pointer">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={RANDOM_MAP_ID} className="cursor-pointer">Random</SelectItem>
+              {BLAST_MAPS.map(m => (
+                <SelectItem key={m.id} value={m.id} className="cursor-pointer">
+                  {m.label}
                 </SelectItem>
               ))}
             </SelectContent>

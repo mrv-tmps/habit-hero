@@ -81,6 +81,7 @@
     --ba-rock-edge: 250 12% 26%;
     --ba-hazard: 200 80% 45%;
     --ba-hazard-deep: 210 70% 28%;
+    --ba-deco: 235 20% 30%;
 
     /* Multiplayer player slot colors */
     --player-1: 45 90% 55%;
@@ -91,6 +92,50 @@
     --player-6: 30 85% 55%;
     --player-7: 180 60% 45%;
     --player-8: 300 55% 55%;
+  }
+
+  /* Blast Arena map themes — the engine sets data-ba-map on <html> while a themed
+     map is active and samples these via getComputedStyle. Grasslands = :root defaults. */
+  [data-ba-map='volcano'] {
+    --ba-sky: 8 35% 9%;
+    --ba-terrain: 12 22% 24%;
+    --ba-terrain-edge: 12 28% 14%;
+    --ba-grass: 20 70% 42%;
+    --ba-dirt: 12 22% 19%;
+    --ba-rock: 0 8% 36%;
+    --ba-rock-edge: 0 10% 25%;
+    --ba-hazard: 22 95% 55%;
+    --ba-hazard-deep: 12 90% 42%;
+    --ba-cloud: 10 20% 18%;
+    --ba-deco: 28 95% 60%;
+  }
+
+  [data-ba-map='tundra'] {
+    --ba-sky: 212 40% 11%;
+    --ba-terrain: 215 18% 34%;
+    --ba-terrain-edge: 215 24% 21%;
+    --ba-grass: 205 35% 86%;
+    --ba-dirt: 215 18% 28%;
+    --ba-rock: 210 10% 46%;
+    --ba-rock-edge: 210 12% 33%;
+    --ba-hazard: 195 75% 48%;
+    --ba-hazard-deep: 205 65% 30%;
+    --ba-cloud: 212 22% 24%;
+    --ba-deco: 205 40% 92%;
+  }
+
+  [data-ba-map='orbit'] {
+    --ba-sky: 252 45% 6%;
+    --ba-terrain: 258 18% 30%;
+    --ba-terrain-edge: 258 24% 17%;
+    --ba-grass: 165 55% 42%;
+    --ba-dirt: 258 18% 24%;
+    --ba-rock: 250 10% 40%;
+    --ba-rock-edge: 250 12% 27%;
+    --ba-hazard: 275 65% 35%;
+    --ba-hazard-deep: 270 55% 14%;
+    --ba-cloud: 285 30% 17%;
+    --ba-deco: 50 40% 90%;
   }
 }
 

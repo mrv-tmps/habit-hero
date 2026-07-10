@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useMultiplayerRoom, getStoredToken } from '@/hooks/useMultiplayerRoom';
 import { useRealtimeRoom } from '@/hooks/useRealtimeRoom';
 import { useBlastEngine, type BlastUnitInit } from '@/hooks/useBlastEngine';
+import { resolveBlastMap } from '@/config/blastMaps';
 import { getTitleForXp } from '@/lib/titles';
 import type { ShotInput } from '@/lib/blastSim';
 import type { BlastWeaponId } from '@/config/constants';
@@ -74,9 +75,13 @@ export function useMultiplayerBlast(room: MultiplayerRoom): UseMultiplayerBlastR
     [participants, ownParticipant],
   );
 
+  // NULL map_id = random; the seed-derived pick is identical on every client
+  const map = useMemo(() => resolveBlastMap(room.map_id, room.seed), [room.map_id, room.seed]);
+
   const engine = useBlastEngine({
     seed: room.seed,
     startAt,
+    map,
     unitInits,
     autoSkipTurns: isHost,
     skipGraceMs: BA_SKIP_GRACE_MS,

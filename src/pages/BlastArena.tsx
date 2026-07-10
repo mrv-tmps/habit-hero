@@ -20,6 +20,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useUserData } from '@/hooks/useUserData';
 import { useGameSessions } from '@/hooks/useGameSessions';
 import { useBlastEngine } from '@/hooks/useBlastEngine';
+import { BLAST_MAPS, RANDOM_MAP_ID, resolveBlastMap } from '@/config/blastMaps';
 import { chooseAiShot } from '@/lib/blastAi';
 import type { UnitState } from '@/lib/blastSim';
 import BlastCanvas from '@/components/blast/BlastCanvas';
@@ -52,12 +53,13 @@ function getBestWins(): number {
 interface MatchProps {
   seed: number;
   startAt: number;
+  mapId: string;
   difficulty: BlastDifficulty;
   characterName: string;
   onEnd: (winner: UnitState | null, damageDealt: Record<string, number>) => void;
 }
 
-function BlastMatch({ seed, startAt, difficulty, characterName, onEnd }: MatchProps) {
+function BlastMatch({ seed, startAt, mapId, difficulty, characterName, onEnd }: MatchProps) {
   // Stable identity — the engine re-initializes its world when this array changes
   const unitInits = useMemo(
     () => [
@@ -66,7 +68,8 @@ function BlastMatch({ seed, startAt, difficulty, characterName, onEnd }: MatchPr
     ],
     [characterName],
   );
-  const engine = useBlastEngine({ seed, startAt, unitInits });
+  const map = useMemo(() => resolveBlastMap(mapId, seed), [mapId, seed]);
+  const engine = useBlastEngine({ seed, startAt, map, unitInits });
 
   const {
     phase, countdown, turnIndex, activeUnit, wind, turnTimeLeft, winner, damageDealt,
@@ -177,6 +180,7 @@ interface MatchConfig {
   id: number;
   seed: number;
   startAt: number;
+  mapId: string;
 }
 
 interface MatchOutcome {
@@ -204,6 +208,7 @@ export default function BlastArena() {
 
   const [pageState, setPageState] = useState<PageState>('idle');
   const [difficulty, setDifficulty] = useState<BlastDifficulty>('medium');
+  const [mapId, setMapId] = useState<string>(RANDOM_MAP_ID);
   const [match, setMatch] = useState<MatchConfig | null>(null);
   const [outcome, setOutcome] = useState<MatchOutcome | null>(null);
   const [bestWins, setBestWins] = useState(getBestWins);
@@ -224,6 +229,7 @@ export default function BlastArena() {
       id: Date.now(),
       seed: Math.floor(Math.random() * 2 ** 31),
       startAt: Date.now() + BA_COUNTDOWN_MS,
+      mapId,
     });
     setPageState('playing');
   };
@@ -368,6 +374,23 @@ export default function BlastArena() {
                 ))}
               </div>
 
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-mono text-muted-foreground">map</span>
+                <Select value={mapId} onValueChange={setMapId}>
+                  <SelectTrigger className="w-40 cursor-pointer">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={RANDOM_MAP_ID} className="cursor-pointer">Random</SelectItem>
+                    {BLAST_MAPS.map(m => (
+                      <SelectItem key={m.id} value={m.id} className="cursor-pointer">
+                        {m.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div className="flex flex-col items-center gap-3">
                 <Button onClick={startMatch} className="px-8">
                   Start Battle
@@ -406,6 +429,7 @@ export default function BlastArena() {
               key={match.id}
               seed={match.seed}
               startAt={match.startAt}
+              mapId={match.mapId}
               difficulty={difficulty}
               characterName={characterName}
               onEnd={handleMatchEnd}

@@ -19,6 +19,8 @@ export interface MultiplayerRoom {
   seed: number;
   typing_mode: TypingMode | null;
   code_language: CodeLanguage | null;
+  // Blast Arena map (blastMaps registry id); NULL = random, resolved from seed
+  map_id: string | null;
   created_at: string;
 }
 

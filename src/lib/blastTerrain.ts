@@ -40,7 +40,7 @@ function smoothLerp(a: number, b: number, t: number): number {
 }
 
 // Random structure derived from the shared seed — every client picks the same one.
-// Session 14 replaces callers with an explicit picker; this stays as the "Random" path.
+// Used by resolveBlastMap as the "Random" map path.
 export function pickMapStructure(seed: number): MapStructure {
   const rng = mulberry32(seed ^ 0x9e3779b9);
   return MAP_STRUCTURES[Math.floor(rng() * MAP_STRUCTURES.length)];
@@ -143,7 +143,7 @@ function fillPillars(rng: () => number, terrain: Uint8Array): void {
   }
 }
 
-const HAZARD_FLOOR_Y = H - 10;
+export const HAZARD_FLOOR_Y = H - 10;
 
 // Seeded cell grid (row-major, y * W + x) plus the structure's hazard floor
 export function generateTerrain(seed: number, structure: MapStructure): GeneratedMap {

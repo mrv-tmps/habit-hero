@@ -25,10 +25,11 @@ import {
   carveCircle,
   isSolid,
   spawnPositions,
-  pickMapStructure,
   MAP_STRUCTURES,
+  HAZARD_FLOOR_Y,
   type MapStructure,
 } from '@/lib/blastTerrain';
+import { paintMapBackdrop, type BlastMapConfig } from '@/config/blastMaps';
 import {
   simulateShot,
   windAt,
@@ -89,6 +90,8 @@ export interface BlastUnitInit {
 interface UseBlastEngineArgs {
   seed: number;
   startAt: number;
+  // Resolved map (callers run resolveBlastMap) — structure, hazard, and theme
+  map: BlastMapConfig;
   unitInits: BlastUnitInit[];
   onShotCommitted?: (input: ShotInput, turnIndex: number) => void;
   // Multiplayer host: broadcast the authoritative turn boundary after every shot/skip
@@ -159,6 +162,7 @@ interface Playback {
 export function useBlastEngine({
   seed,
   startAt,
+  map,
   unitInits,
   onShotCommitted,
   onTurnResolved,
@@ -263,6 +267,9 @@ export function useBlastEngine({
     };
 
     ctx.clearRect(0, 0, BA_CANVAS_W, BA_CANVAS_H);
+    // Themed sky decorations sit behind the terrain fills; seeded, so they are
+    // stable across the carve-triggered repaints
+    paintMapBackdrop(ctx, map, seed, { deco: pal.deco ?? pal.cloud, cloud: pal.cloud });
     fillRuns(1, pal.terrain ?? '#000');
     fillRuns(2, pal.rock ?? pal.terrain ?? '#000');
 
@@ -316,19 +323,19 @@ export function useBlastEngine({
       }
     }
     ctx.fill();
-  }, []);
+  }, [map, seed]);
 
   // ── World init (re-runs when the roster arrives — multiplayer loads participants async)
   useEffect(() => {
     if (unitInits.length === 0) return;
     // Dev-only escape hatch to force a structure while testing (localStorage 'ba-map')
     const forced = import.meta.env.DEV ? localStorage.getItem('ba-map') : null;
-    const structure: MapStructure = MAP_STRUCTURES.includes(forced as MapStructure)
-      ? (forced as MapStructure)
-      : pickMapStructure(seed);
+    const isForced = MAP_STRUCTURES.includes(forced as MapStructure);
+    const structure: MapStructure = isForced ? (forced as MapStructure) : map.structure;
     const { terrain, hazardY } = generateTerrain(seed, structure);
     terrainRef.current = terrain;
-    hazardYRef.current = hazardY;
+    // The map config owns the hazard floor; a forced structure keeps its default
+    hazardYRef.current = isForced ? hazardY : map.hazard === 'none' ? null : HAZARD_FLOOR_Y;
     airborneRef.current = null;
     const spawns = spawnPositions(seed, terrain, unitInits.length, hazardY);
     unitsRef.current = unitInits.map((init, i) => ({
@@ -345,10 +352,13 @@ export function useBlastEngine({
     lastCarvedTurnRef.current = -1;
     repaintTerrain();
     syncUnits();
-  }, [seed, unitInits, repaintTerrain, syncUnits]);
+  }, [seed, map, unitInits, repaintTerrain, syncUnits]);
 
-  // ── Palette sampled from CSS tokens once (design rule: no hex literals in TS)
+  // ── Palette sampled from CSS tokens (design rule: no hex literals in TS).
+  // The map's theme attribute goes on <html> so the [data-ba-map] token scopes
+  // resolve here even before the canvas mounts (MP samples during the ready screen).
   useEffect(() => {
+    document.documentElement.setAttribute('data-ba-map', map.themeAttr);
     const css = getComputedStyle(document.documentElement);
     const palette: Record<string, string> = {
       sky: readToken(css, '--ba-sky'),
@@ -360,6 +370,7 @@ export function useBlastEngine({
       rockEdge: readToken(css, '--ba-rock-edge'),
       hazard: readToken(css, '--ba-hazard'),
       hazardDeep: readToken(css, '--ba-hazard-deep'),
+      deco: readToken(css, '--ba-deco'),
       explosion: readToken(css, '--ba-explosion'),
       trajectory: readToken(css, '--ba-trajectory'),
       smoke: readToken(css, '--ba-smoke'),
@@ -398,7 +409,8 @@ export function useBlastEngine({
     });
     projSpritesRef.current = buildProjectileSprites(spriteColors);
     repaintTerrain();
-  }, [repaintTerrain]);
+    return () => document.documentElement.removeAttribute('data-ba-map');
+  }, [map, repaintTerrain]);
 
   // ── FX state honors prefers-reduced-motion, live
   useEffect(() => {

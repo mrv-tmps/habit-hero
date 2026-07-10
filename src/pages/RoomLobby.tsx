@@ -12,6 +12,7 @@ import type { RoomConfigUpdate } from '@/hooks/useMultiplayerRoom';
 import { useRealtimeRoom } from '@/hooks/useRealtimeRoom';
 import { useAuth } from '@/contexts/AuthContext';
 import RoomConfigPanel from '@/components/multiplayer/RoomConfigPanel';
+import { BLAST_MAPS } from '@/config/blastMaps';
 import type { MultiplayerRoom, MultiplayerParticipant } from '@/types/multiplayer';
 import { cn } from '@/lib/utils';
 
@@ -367,6 +368,12 @@ export default function RoomLobby() {
                   <p className="text-sm font-sans text-muted-foreground capitalize">
                     <span className="text-foreground font-medium">Difficulty: </span>
                     {room.difficulty}
+                  </p>
+                )}
+                {room.game_type === 'blast-arena' && (
+                  <p className="text-sm font-sans text-muted-foreground">
+                    <span className="text-foreground font-medium">Map: </span>
+                    {BLAST_MAPS.find(m => m.id === room.map_id)?.label ?? 'Random'}
                   </p>
                 )}
                 {room.question_count && (
