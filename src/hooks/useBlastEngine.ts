@@ -2,6 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   BA_CANVAS_W,
   BA_CANVAS_H,
+  BA_FALL_DMG_CAP,
+  BA_FALL_DMG_PER_PX,
+  BA_FALL_SAFE_PX,
+  BA_GRAVITY,
+  BA_JUMP_IMPULSE,
+  BA_JUMP_STAMINA_COST,
   BA_MAX_ROUNDS,
   BA_RESOLUTION_FORCE_MS,
   BA_SUDDEN_DEATH_DRAIN,
@@ -14,10 +20,17 @@ import {
   BA_WIND_MAX,
   type BlastWeaponId,
 } from '@/config/constants';
-import { generateTerrain, carveCircle, isSolid, spawnPositions } from '@/lib/blastTerrain';
+import {
+  generateTerrain,
+  carveCircle,
+  isSolid,
+  spawnPositions,
+  pickMapStructure,
+  MAP_STRUCTURES,
+  type MapStructure,
+} from '@/lib/blastTerrain';
 import {
   simulateShot,
-  settleUnits,
   windAt,
   type ShotInput,
   type ShotResult,
@@ -51,6 +64,8 @@ import {
   spawnTrailSmoke,
   spawnWalkDust,
   spawnKoFx,
+  spawnLandingFx,
+  spawnSplashFx,
   spawnDamageNumber,
   fxShakeOffset,
   drawFxAmbient,
@@ -89,6 +104,7 @@ export interface SimStateSnapshot {
   terrain: Uint8Array;
   units: UnitState[];
   wind: number;
+  hazardY: number | null;
 }
 
 interface UseBlastEngineReturn {
@@ -104,6 +120,7 @@ interface UseBlastEngineReturn {
   selectedWeapon: BlastWeaponId;
   setWeapon: (w: BlastWeaponId) => void;
   staminaLeft: number;
+  jump: () => void;
   commitShot: (vx: number, vy: number) => void;
   applyRemoteShot: (input: ShotInput, turnIndex: number) => void;
   skipCurrentTurn: () => void;
@@ -131,6 +148,10 @@ interface Playback {
   shooterId: string;
   turnIndex: number;
   startedAt: number;
+  // Projectile frames plus the longest knockback-flight arc — playback runs this long
+  totalFrames: number;
+  // Explosion visuals (FX + carve) fire once at the projectile/flight seam
+  explosionShown: boolean;
   // Renderer bookkeeping: last frame that emitted a smoke-trail particle
   trailFrame: number;
 }
@@ -162,6 +183,9 @@ export function useBlastEngine({
   const previewRef = useRef<SimFrame[] | null>(null);
   const walkHeldRef = useRef<-1 | 0 | 1>(0);
   const staminaRef = useRef(BA_WALK_STAMINA_PX);
+  const hazardYRef = useRef<number | null>(null);
+  // Local unit's in-air state (jump or walk-off); null while grounded
+  const airborneRef = useRef<{ vy: number; peakY: number } | null>(null);
   const turnEndsAtRef = useRef(0);
   const phaseRef = useRef<BlastPhase>('countdown');
   const turnIndexRef = useRef(0);
@@ -218,19 +242,38 @@ export function useBlastEngine({
     const terrain = terrainRef.current;
     const pal = paletteRef.current;
     const solidAt = (x: number, y: number) =>
-      x >= 0 && x < BA_CANVAS_W && y >= 0 && y < BA_CANVAS_H && terrain[y * BA_CANVAS_W + x] === 1;
+      x >= 0 && x < BA_CANVAS_W && y >= 0 && y < BA_CANVAS_H && terrain[y * BA_CANVAS_W + x] !== 0;
+
+    // Row-run fill of every cell holding the given value
+    const fillRuns = (value: number, color: string) => {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      for (let y = 0; y < BA_CANVAS_H; y++) {
+        let runStart = -1;
+        for (let x = 0; x <= BA_CANVAS_W; x++) {
+          const match = x < BA_CANVAS_W && terrain[y * BA_CANVAS_W + x] === value;
+          if (match && runStart < 0) runStart = x;
+          if (!match && runStart >= 0) {
+            ctx.rect(runStart, y, x - runStart, 1);
+            runStart = -1;
+          }
+        }
+      }
+      ctx.fill();
+    };
 
     ctx.clearRect(0, 0, BA_CANVAS_W, BA_CANVAS_H);
-    ctx.fillStyle = pal.terrain ?? '#000';
+    fillRuns(1, pal.terrain ?? '#000');
+    fillRuns(2, pal.rock ?? pal.terrain ?? '#000');
+
+    // Rock edge: darker outline wherever rock touches air, so "won't blow up" reads visually
+    ctx.fillStyle = pal.rockEdge ?? pal.rock ?? '#000';
     ctx.beginPath();
     for (let y = 0; y < BA_CANVAS_H; y++) {
-      let runStart = -1;
-      for (let x = 0; x <= BA_CANVAS_W; x++) {
-        const solid = x < BA_CANVAS_W && terrain[y * BA_CANVAS_W + x] === 1;
-        if (solid && runStart < 0) runStart = x;
-        if (!solid && runStart >= 0) {
-          ctx.rect(runStart, y, x - runStart, 1);
-          runStart = -1;
+      for (let x = 0; x < BA_CANVAS_W; x++) {
+        if (terrain[y * BA_CANVAS_W + x] !== 2) continue;
+        if (!solidAt(x - 1, y) || !solidAt(x + 1, y) || !solidAt(x, y - 1) || !solidAt(x, y + 1)) {
+          ctx.rect(x, y, 1, 1);
         }
       }
     }
@@ -278,9 +321,16 @@ export function useBlastEngine({
   // ── World init (re-runs when the roster arrives — multiplayer loads participants async)
   useEffect(() => {
     if (unitInits.length === 0) return;
-    const terrain = generateTerrain(seed);
+    // Dev-only escape hatch to force a structure while testing (localStorage 'ba-map')
+    const forced = import.meta.env.DEV ? localStorage.getItem('ba-map') : null;
+    const structure: MapStructure = MAP_STRUCTURES.includes(forced as MapStructure)
+      ? (forced as MapStructure)
+      : pickMapStructure(seed);
+    const { terrain, hazardY } = generateTerrain(seed, structure);
     terrainRef.current = terrain;
-    const spawns = spawnPositions(seed, terrain, unitInits.length);
+    hazardYRef.current = hazardY;
+    airborneRef.current = null;
+    const spawns = spawnPositions(seed, terrain, unitInits.length, hazardY);
     unitsRef.current = unitInits.map((init, i) => ({
       ...init,
       hp: BA_UNIT_HP,
@@ -306,6 +356,10 @@ export function useBlastEngine({
       terrainEdge: readToken(css, '--ba-terrain-edge'),
       grass: readToken(css, '--ba-grass'),
       dirt: readToken(css, '--ba-dirt'),
+      rock: readToken(css, '--ba-rock'),
+      rockEdge: readToken(css, '--ba-rock-edge'),
+      hazard: readToken(css, '--ba-hazard'),
+      hazardDeep: readToken(css, '--ba-hazard-deep'),
       explosion: readToken(css, '--ba-explosion'),
       trajectory: readToken(css, '--ba-trajectory'),
       smoke: readToken(css, '--ba-smoke'),
@@ -366,6 +420,7 @@ export function useBlastEngine({
       terrain: pal.terrain,
       cloud: pal.cloud,
       trajectory: pal.trajectory,
+      hazard: pal.hazard,
     };
   }, []);
 
@@ -388,6 +443,7 @@ export function useBlastEngine({
     staminaRef.current = BA_WALK_STAMINA_PX;
     turnEndsAtRef.current = Date.now() + turnTimeMs;
     walkHeldRef.current = 0;
+    airborneRef.current = null;
     previewRef.current = null;
     setTurnIndex(turnIdx);
     setWind(windRef.current);
@@ -461,11 +517,13 @@ export function useBlastEngine({
     }
   }, []);
 
-  // ── Shot resolution (applied when playback finishes or the fallback timer fires)
-  const applyShotResult = useCallback((playback: Playback) => {
-    const { result, shooterId, turnIndex: resolvedTurn } = playback;
-    const terrain = terrainRef.current;
-    const units = unitsRef.current;
+  // Explosion visuals + crater. Called by the renderer at the projectile/flight seam
+  // so the world reacts before knocked units fly; applyShotResult re-calls it as the
+  // fallback for throttled tabs. Both paths are idempotent via the flags/guards.
+  const showExplosion = useCallback((playback: Playback) => {
+    if (playback.explosionShown) return;
+    playback.explosionShown = true;
+    const { result, turnIndex: resolvedTurn } = playback;
 
     if (result.explosionAt) {
       const weaponRadius = result.carves[0]?.r ?? 10;
@@ -486,30 +544,62 @@ export function useBlastEngine({
     }
     if (result.carves.length > 0 && lastCarvedTurnRef.current < resolvedTurn) {
       for (const carve of result.carves) {
-        carveCircle(terrain, carve.x, carve.y, carve.r);
+        carveCircle(terrainRef.current, carve.x, carve.y, carve.r);
       }
       lastCarvedTurnRef.current = resolvedTurn;
       repaintTerrain();
     }
+  }, [getFxPal, repaintTerrain]);
+
+  const showExplosionRef = useRef(showExplosion);
+  showExplosionRef.current = showExplosion;
+
+  // ── Shot resolution (applied when playback finishes or the fallback timer fires)
+  const applyShotResult = useCallback((playback: Playback) => {
+    const { result, shooterId, turnIndex: resolvedTurn } = playback;
+    const units = unitsRef.current;
+
+    showExplosion(playback);
+    airborneRef.current = null;
 
     let dealtToOthers = 0;
     for (const unit of units) {
-      const dmg = result.damage[unit.id];
-      if (!dmg) continue;
       const wasAlive = unit.hp > 0;
-      unit.hp = Math.max(0, unit.hp - dmg);
-      if (unit.id !== shooterId) dealtToOthers += dmg;
-      fxDamage(unit, dmg, wasAlive && unit.hp <= 0);
-      const kb = result.knockback[unit.id];
-      if (kb && unit.hp > 0) {
-        unit.x += kb.dx;
-        unit.y += kb.dy;
+      if (!wasAlive) continue;
+      const dmg = result.damage[unit.id] ?? 0;
+      const fall = result.fallDamage[unit.id] ?? 0;
+      const drowned = result.hazardKO.includes(unit.id);
+
+      // Snap to the sim's landing spot first so damage numbers appear where the unit is
+      const pos = result.finalPositions[unit.id];
+      if (pos) {
+        unit.x = pos.x;
+        unit.y = pos.y;
+      }
+
+      if (dmg > 0) {
+        unit.hp = Math.max(0, unit.hp - dmg);
+        if (unit.id !== shooterId) dealtToOthers += dmg;
+        fxDamage(unit, dmg, unit.hp <= 0 && fall === 0 && !drowned);
+      }
+      if (fall > 0 && unit.hp > 0) {
+        unit.hp = Math.max(0, unit.hp - fall);
+        if (unit.id !== shooterId) dealtToOthers += fall;
+        fxDamage(unit, fall, unit.hp <= 0 && !drowned);
+        if (fxRef.current) spawnLandingFx(fxRef.current, getFxPal(), unit.x, unit.y, fall, Date.now());
+      }
+      if (drowned && unit.hp > 0) {
+        unit.hp = 0;
+        const fx = fxRef.current;
+        if (fx) {
+          spawnSplashFx(fx, getFxPal(), unit.x, unit.y, Date.now());
+          spawnKoFx(fx, getFxPal(), unit.x, unit.y, Date.now());
+        }
       }
     }
     damageDealtRef.current[shooterId] =
       (damageDealtRef.current[shooterId] ?? 0) + dealtToOthers;
 
-    settleUnits(terrain, units);
     syncUnits();
 
     const advanced = advanceTurn();
@@ -523,7 +613,7 @@ export function useBlastEngine({
       clearPendingResolution();
       hardApplyResolutionRef.current(pending);
     }
-  }, [advanceTurn, buildResolution, clearPendingResolution, fxDamage, getFxPal, repaintTerrain, syncUnits]);
+  }, [advanceTurn, buildResolution, clearPendingResolution, fxDamage, getFxPal, showExplosion, syncUnits]);
 
   const applyShotResultRef = useRef(applyShotResult);
   applyShotResultRef.current = applyShotResult;
@@ -532,6 +622,7 @@ export function useBlastEngine({
   const hardApplyResolution = useCallback((res: TurnResolution) => {
     if (phaseRef.current === 'done') return;
     playbackRef.current = null;
+    airborneRef.current = null;
 
     if (res.carve && lastCarvedTurnRef.current < res.resolved_turn) {
       carveCircle(terrainRef.current, res.carve.x, res.carve.y, res.carve.r);
@@ -601,14 +692,19 @@ export function useBlastEngine({
       unitsRef.current,
       windRef.current,
       shooter.id,
+      hazardYRef.current,
     );
     previewRef.current = null;
+    const flightFrames = Object.values(result.unitFrames)
+      .reduce((max, f) => Math.max(max, f.length), 0);
     const playback: Playback = {
       result,
       weapon: input.weapon,
       shooterId: shooter.id,
       turnIndex: turnIndexRef.current,
       startedAt: Date.now(),
+      totalFrames: result.frames.length + flightFrames,
+      explosionShown: false,
       trailFrame: -1,
     };
     playbackRef.current = playback;
@@ -618,7 +714,7 @@ export function useBlastEngine({
     setPhase('projectile');
 
     // Fallback: rAF is suspended in hidden tabs — state must advance regardless
-    const durationMs = (result.frames.length / SIM_FPS) * 1000;
+    const durationMs = (playback.totalFrames / SIM_FPS) * 1000;
     setTimeout(() => {
       if (playbackRef.current === playback) {
         playbackRef.current = null;
@@ -662,12 +758,15 @@ export function useBlastEngine({
     const active = unitsRef.current[activeIdxRef.current];
     if (!active?.isLocal || phaseRef.current !== 'aiming') return;
     active.facing = vx >= 0 ? 1 : -1;
+    // Preview only needs the projectile arc — skip the (heavier) unit resolution
     const result = simulateShot(
       { weapon: selectedWeaponRef.current, x: active.x, y: active.y - BA_UNIT_H, vx, vy },
       terrainRef.current,
       unitsRef.current,
       windRef.current,
       active.id,
+      hazardYRef.current,
+      false,
     );
     previewRef.current = result.frames.slice(0, PREVIEW_STEPS);
   }, []);
@@ -685,10 +784,26 @@ export function useBlastEngine({
     walkHeldRef.current = dir;
   }, []);
 
+  // Jump is local-only, like walking: remote clients learn the position from the
+  // shot payload and the host's turn resolution, so this needs zero netcode.
+  const jump = useCallback(() => {
+    if (phaseRef.current !== 'aiming') return;
+    const unit = unitsRef.current[activeIdxRef.current];
+    if (!unit?.isLocal || unit.hp <= 0) return;
+    if (airborneRef.current) return;
+    if (!isSolid(terrainRef.current, unit.x, unit.y + 1)) return;
+    if (staminaRef.current < BA_JUMP_STAMINA_COST) return;
+    staminaRef.current -= BA_JUMP_STAMINA_COST;
+    setStaminaLeft(Math.round(staminaRef.current));
+    airborneRef.current = { vy: BA_JUMP_IMPULSE, peakY: unit.y };
+    if (fxRef.current) spawnWalkDust(fxRef.current, getFxPal(), unit.x, unit.y, Date.now());
+  }, [getFxPal]);
+
   const getSimState = useCallback((): SimStateSnapshot => ({
     terrain: terrainRef.current,
     units: unitsRef.current,
     wind: windRef.current,
+    hazardY: hazardYRef.current,
   }), []);
 
   // ── Countdown until startAt (startAt 0 = game not begun; stay in countdown phase)
@@ -723,39 +838,126 @@ export function useBlastEngine({
     return () => clearInterval(interval);
   }, [phase, turnIndex, autoSkipTurns, skipGraceMs, skipCurrentTurn]);
 
-  // ── Walking (interval, not rAF — discrete steps, throttled state sync)
+  // ── Walking + local vertical physics (interval, not rAF — discrete steps).
+  // Movement is local-only during your own turn; the shot payload / host resolution
+  // carry the outcome, so falls and hazard deaths here reconcile at the turn boundary.
   useEffect(() => {
     if (phase !== 'aiming') return;
     let stepCount = 0;
+
     const interval = setInterval(() => {
-      const dir = walkHeldRef.current;
-      if (dir === 0 || staminaRef.current <= 0) return;
       const unit = unitsRef.current[activeIdxRef.current];
       if (!unit?.isLocal || unit.hp <= 0) return;
-
       const terrain = terrainRef.current;
-      const nx = Math.max(BA_UNIT_W / 2, Math.min(BA_CANVAS_W - BA_UNIT_W / 2, unit.x + dir * WALK_STEP_PX));
-      let ny = unit.y;
-      let climbed = 0;
-      while (isSolid(terrain, nx, ny) && climbed < 4) {
-        ny--;
-        climbed++;
-      }
-      if (isSolid(terrain, nx, ny)) return; // wall too steep
-      while (ny < BA_CANVAS_H - 1 && !isSolid(terrain, nx, ny + 1)) ny++;
+      const hazardY = hazardYRef.current;
+      const dir = walkHeldRef.current;
 
-      unit.x = nx;
-      unit.y = ny;
-      unit.facing = dir;
-      staminaRef.current = Math.max(0, staminaRef.current - WALK_STEP_PX);
-      setStaminaLeft(Math.round(staminaRef.current));
-      // Occasional heel-dust puff while walking
-      if (++stepCount % 5 === 0 && fxRef.current) {
-        spawnWalkDust(fxRef.current, getFxPal(), unit.x - dir * 3, unit.y, Date.now());
+      const die = (drowned: boolean) => {
+        unit.hp = 0;
+        airborneRef.current = null;
+        const fx = fxRef.current;
+        if (fx) {
+          if (drowned) spawnSplashFx(fx, getFxPal(), unit.x, unit.y, Date.now());
+          spawnKoFx(fx, getFxPal(), unit.x, unit.y, Date.now());
+        }
+        syncUnits();
+        // Solo player / MP host advance immediately; non-hosts wait for the host skip
+        if (autoSkipTurns) skipCurrentTurn();
+      };
+
+      // Horizontal: works grounded and mid-air (so jumps can cross gaps); same stamina
+      if (dir !== 0 && staminaRef.current > 0) {
+        const nx = Math.max(BA_UNIT_W / 2, Math.min(BA_CANVAS_W - BA_UNIT_W / 2, unit.x + dir * WALK_STEP_PX));
+        if (airborneRef.current) {
+          if (!isSolid(terrain, nx, unit.y) && !isSolid(terrain, nx, unit.y - BA_UNIT_H + 1)) {
+            unit.x = nx;
+          }
+          unit.facing = dir;
+          staminaRef.current = Math.max(0, staminaRef.current - WALK_STEP_PX);
+          setStaminaLeft(Math.round(staminaRef.current));
+        } else {
+          let ny = unit.y;
+          let climbed = 0;
+          while (isSolid(terrain, nx, ny) && climbed < 4) {
+            ny--;
+            climbed++;
+          }
+          if (!isSolid(terrain, nx, ny)) {
+            unit.x = nx;
+            unit.y = ny;
+            unit.facing = dir;
+            staminaRef.current = Math.max(0, staminaRef.current - WALK_STEP_PX);
+            setStaminaLeft(Math.round(staminaRef.current));
+            // Occasional heel-dust puff while walking
+            if (++stepCount % 5 === 0 && fxRef.current) {
+              spawnWalkDust(fxRef.current, getFxPal(), unit.x - dir * 3, unit.y, Date.now());
+            }
+          }
+        }
+      }
+
+      // Ground-follow: snap down small slope steps; a bigger ledge starts a real fall
+      if (!airborneRef.current && !isSolid(terrain, unit.x, unit.y + 1)) {
+        let snapped = false;
+        for (let k = 1; k <= 3; k++) {
+          if (isSolid(terrain, unit.x, unit.y + k + 1)) {
+            unit.y += k;
+            snapped = true;
+            break;
+          }
+        }
+        if (!snapped) airborneRef.current = { vy: 0, peakY: unit.y };
+      }
+
+      // Vertical integration: 3 sim substeps per 50ms tick keeps 60Hz physics constants
+      const air = airborneRef.current;
+      if (!air) return;
+      for (let s = 0; s < 3 && airborneRef.current; s++) {
+        air.vy += BA_GRAVITY;
+        if (air.vy < 0) {
+          const ny = unit.y + air.vy;
+          if (isSolid(terrain, unit.x, ny - BA_UNIT_H)) {
+            air.vy = 0; // ceiling
+          } else {
+            unit.y = ny;
+            if (unit.y < air.peakY) air.peakY = unit.y;
+          }
+        } else {
+          let remaining = air.vy;
+          while (remaining > 0) {
+            if (hazardY !== null && unit.y >= hazardY) {
+              unit.y = hazardY;
+              die(true);
+              return;
+            }
+            if (isSolid(terrain, unit.x, unit.y + 1)) {
+              const drop = unit.y - air.peakY;
+              airborneRef.current = null;
+              if (drop > BA_FALL_SAFE_PX) {
+                const dmg = Math.floor(
+                  Math.min(BA_FALL_DMG_CAP, (drop - BA_FALL_SAFE_PX) * BA_FALL_DMG_PER_PX),
+                );
+                if (dmg > 0) {
+                  unit.hp = Math.max(0, unit.hp - dmg);
+                  fxDamage(unit, dmg, unit.hp <= 0);
+                  if (fxRef.current) {
+                    spawnLandingFx(fxRef.current, getFxPal(), unit.x, unit.y, dmg, Date.now());
+                  }
+                  syncUnits();
+                  if (unit.hp <= 0 && autoSkipTurns) skipCurrentTurn();
+                }
+              }
+              break;
+            }
+            const d = Math.min(1, remaining);
+            unit.y += d;
+            remaining -= d;
+          }
+        }
       }
     }, WALK_TICK_MS);
     return () => clearInterval(interval);
-  }, [phase, turnIndex, getFxPal]);
+  }, [phase, turnIndex, getFxPal, autoSkipTurns, skipCurrentTurn, fxDamage, syncUnits]);
 
   // ── Renderer (rAF; reads refs only — state application never depends on this loop).
   // Everything here is presentation: sprites, particles, shake. Sim state is applied
@@ -778,6 +980,7 @@ export function useBlastEngine({
         drawFxAmbient(ctx, fx, {
           explosion: pal.explosion, smoke: pal.smoke, dirt: pal.dirt,
           terrain: pal.terrain, cloud: pal.cloud, trajectory: pal.trajectory,
+          hazard: pal.hazard,
         }, windRef.current, BA_WIND_MAX, now);
       }
 
@@ -787,6 +990,19 @@ export function useBlastEngine({
       ctx.translate(Math.round(shake.x), Math.round(shake.y));
 
       if (terrainCanvasRef.current) ctx.drawImage(terrainCanvasRef.current, 0, 0);
+
+      // Hazard floor: animated water strip (drawn behind units)
+      const hazardY = hazardYRef.current;
+      if (hazardY !== null) {
+        ctx.fillStyle = pal.hazardDeep;
+        ctx.fillRect(0, hazardY + 1, BA_CANVAS_W, BA_CANVAS_H - hazardY - 1);
+        ctx.fillStyle = pal.hazard;
+        ctx.fillRect(0, hazardY, BA_CANVAS_W, 1);
+        const wave = fx && !fx.reducedMotion ? Math.floor(now / 400) % 3 : 0;
+        for (let wx = -8 + wave * 3; wx < BA_CANVAS_W; wx += 8) {
+          ctx.fillRect(wx, hazardY + 2, 4, 1);
+        }
+      }
 
       const sprites = projSpritesRef.current;
 
@@ -805,16 +1021,21 @@ export function useBlastEngine({
       // Units
       const activeIdx = activeIdxRef.current;
       const playback = playbackRef.current;
+      const playbackFrameIdx = playback
+        ? Math.floor(((now - playback.startedAt) / 1000) * SIM_FPS)
+        : 0;
       unitsRef.current.forEach((unit, i) => {
         if (unit.hp <= 0) return;
         const anim = unitAnimRef.current[unit.id];
         const isActive = i === activeIdx;
         const isAiming = isActive && phaseRef.current === 'aiming';
 
-        // Frame selection: hit > walk > fire > aim > idle/blink
+        // Frame selection: hit > airborne > walk > fire > aim > idle/blink
         let frame: number = UNIT_FRAME.idle1;
         if (anim && anim.hitUntil > now) {
           frame = UNIT_FRAME.hit;
+        } else if (isAiming && unit.isLocal && airborneRef.current) {
+          frame = UNIT_FRAME.walk2;
         } else if (isAiming && unit.isLocal && walkHeldRef.current !== 0) {
           frame = Math.floor(now / 140) % 2 === 0 ? UNIT_FRAME.walk1 : UNIT_FRAME.walk2;
         } else if (playback && playback.shooterId === unit.id) {
@@ -825,14 +1046,30 @@ export function useBlastEngine({
           frame = UNIT_FRAME.idle2;
         }
 
+        // Knockback flight: draw the unit along its ballistic arc during playback
+        let drawUx = unit.x;
+        let drawUy = unit.y;
+        if (playback) {
+          const arc = playback.result.unitFrames[unit.id];
+          if (arc && arc.length > 0) {
+            const fi = playbackFrameIdx - playback.result.frames.length;
+            if (fi >= 0) {
+              const p = arc[Math.min(fi, arc.length - 1)];
+              drawUx = p.x;
+              drawUy = p.y;
+              frame = UNIT_FRAME.hit;
+            }
+          }
+        }
+
         // Firing recoil: brief lean opposite the launch direction
         const recoil = recoilRef.current;
         const recoilX = recoil && recoil.id === unit.id && recoil.until > now
           ? recoil.dir * Math.ceil(((recoil.until - now) / 200) * 2)
           : 0;
 
-        const px = Math.round(unit.x - UNIT_SPR_W / 2) + recoilX;
-        const py = Math.round(unit.y) - UNIT_SPR_H;
+        const px = Math.round(drawUx - UNIT_SPR_W / 2) + recoilX;
+        const py = Math.round(drawUy) - UNIT_SPR_H;
         const sheet = unitSheetsRef.current[unit.colorIndex];
 
         const blit = (img: HTMLCanvasElement) => {
@@ -867,7 +1104,7 @@ export function useBlastEngine({
         const shownHp = anim ? anim.displayHp : unit.hp;
         const lowHp = unit.hp / BA_UNIT_HP < 0.25;
         const barW = 12;
-        const bx = Math.round(unit.x - barW / 2);
+        const bx = Math.round(drawUx - barW / 2);
         const by = py - 5;
         ctx.fillStyle = pal.muted;
         ctx.fillRect(bx, by, barW, 2);
@@ -898,16 +1135,23 @@ export function useBlastEngine({
 
       // Projectile playback (cosmetic — the fallback timer owns state application)
       if (playback) {
-        const elapsed = now - playback.startedAt;
-        const frameIdx = Math.floor((elapsed / 1000) * SIM_FPS);
-        if (frameIdx >= playback.result.frames.length) {
+        const frameIdx = playbackFrameIdx;
+        // Seam: the projectile has landed — show the explosion/crater while any
+        // knocked units are still animating their flight arcs
+        if (frameIdx >= playback.result.frames.length && !playback.explosionShown) {
+          showExplosionRef.current(playback);
+        }
+        if (frameIdx >= playback.totalFrames) {
           playbackRef.current = null;
           applyShotResultRef.current(playback);
+        } else if (frameIdx >= playback.result.frames.length) {
+          // Flight portion: units are drawn along their arcs above; no projectile left
         } else {
           const framePt = playback.result.frames[frameIdx];
           const fxPal = {
             explosion: pal.explosion, smoke: pal.smoke, dirt: pal.dirt,
             terrain: pal.terrain, cloud: pal.cloud, trajectory: pal.trajectory,
+            hazard: pal.hazard,
           };
           const prev = playback.result.frames[Math.max(0, frameIdx - 2)];
           ctx.save();
@@ -1015,6 +1259,7 @@ export function useBlastEngine({
     selectedWeapon,
     setWeapon,
     staminaLeft,
+    jump,
     commitShot,
     applyRemoteShot,
     skipCurrentTurn,

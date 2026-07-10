@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
+  ArrowUp,
   Bomb,
   ChevronLeft,
   ChevronRight,
@@ -28,6 +29,7 @@ interface BlastHudProps {
   setWeapon: (w: BlastWeaponId) => void;
   staminaLeft: number;
   setWalkHeld: (dir: -1 | 0 | 1) => void;
+  onJump: () => void;
 }
 
 const WEAPON_IDS = Object.keys(BA_WEAPONS) as BlastWeaponId[];
@@ -47,6 +49,7 @@ export default function BlastHud({
   setWeapon,
   staminaLeft,
   setWalkHeld,
+  onJump,
 }: BlastHudProps) {
   const [coarsePointer, setCoarsePointer] = useState(false);
   useEffect(() => {
@@ -154,6 +157,15 @@ export default function BlastHud({
                   {dir === -1 ? <ChevronLeft className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
                 </button>
               ))}
+              <button
+                disabled={!isLocalTurn}
+                className="w-11 h-11 rounded-lg bg-white/[0.06] text-focused-correct flex items-center justify-center active:bg-white/[0.12] disabled:opacity-40"
+                style={{ touchAction: 'none' }}
+                onPointerDown={onJump}
+                aria-label="Jump"
+              >
+                <ArrowUp className="w-5 h-5" />
+              </button>
             </div>
           )}
         </div>

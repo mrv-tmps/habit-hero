@@ -27,14 +27,18 @@ function candidateScore(
   shooter: UnitState,
   target: UnitState,
   selfHarmWeight: number,
+  hazardY: number | null,
 ): number {
-  const result = simulateShot(input, terrain, units, wind, shooter.id);
+  const result = simulateShot(input, terrain, units, wind, shooter.id, hazardY);
   if (!result.explosionAt) return Number.MAX_SAFE_INTEGER;
   const dx = result.explosionAt.x - target.x;
   const dy = result.explosionAt.y - (target.y - BA_UNIT_H / 2);
   let score = dx * dx + dy * dy;
-  // Self-damage is a bad plan; nudge the search away from it
+  // Self-damage is a bad plan; nudge the search away from it. A knockback flight that
+  // ends in the hazard floor is suicide — score it as max self-harm.
   score += (result.damage[shooter.id] ?? 0) * selfHarmWeight;
+  score += (result.fallDamage[shooter.id] ?? 0) * selfHarmWeight;
+  if (result.hazardKO.includes(shooter.id)) score += 100 * selfHarmWeight;
   return score;
 }
 
@@ -47,6 +51,7 @@ export function chooseAiShot(
   target: UnitState,
   wind: number,
   difficulty: BlastDifficulty,
+  hazardY: number | null,
 ): ShotInput {
   const origin = { x: shooter.x, y: shooter.y - BA_UNIT_H };
   const towardTarget = target.x >= shooter.x ? 1 : -1;
@@ -64,7 +69,7 @@ export function chooseAiShot(
   let bestScore = Number.MAX_SAFE_INTEGER;
 
   const tryCandidate = (input: ShotInput) => {
-    const score = candidateScore(input, terrain, units, wind, shooter, target, cfg.selfHarmWeight);
+    const score = candidateScore(input, terrain, units, wind, shooter, target, cfg.selfHarmWeight, hazardY);
     if (score < bestScore) {
       bestScore = score;
       best = input;

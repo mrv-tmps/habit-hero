@@ -23,13 +23,13 @@ export default function MultiplayerBlast({ room }: { room: MultiplayerRoom }) {
 
   const {
     phase, countdown, turnIndex, activeUnit, unitsView, wind, turnTimeLeft,
-    selectedWeapon, setWeapon, staminaLeft,
+    selectedWeapon, setWeapon, staminaLeft, jump,
     commitShot, setWalkHeld, updateAim, clearAim, registerCanvas,
   } = engine;
 
   const isLocalTurn = phase === 'aiming' && !!activeUnit?.isLocal;
 
-  // Keyboard: arrows/AD walk, 1/2/3 weapon (active on own turn only via engine guards)
+  // Keyboard: arrows/AD walk, up/W/space jump, 1/2/3 weapon (own turn only via engine guards)
   useEffect(() => {
     if (mpPhase !== 'active') return;
     const weaponIds = Object.keys(BA_WEAPONS) as (keyof typeof BA_WEAPONS)[];
@@ -40,6 +40,9 @@ export default function MultiplayerBlast({ room }: { room: MultiplayerRoom }) {
       } else if (e.key === 'ArrowRight' || e.key === 'd') {
         e.preventDefault();
         setWalkHeld(1);
+      } else if (e.key === 'ArrowUp' || e.key === 'w' || e.key === ' ') {
+        e.preventDefault();
+        jump();
       } else if (e.key >= '1' && e.key <= '3') {
         setWeapon(weaponIds[parseInt(e.key, 10) - 1]);
       }
@@ -53,7 +56,7 @@ export default function MultiplayerBlast({ room }: { room: MultiplayerRoom }) {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
     };
-  }, [mpPhase, setWalkHeld, setWeapon]);
+  }, [mpPhase, setWalkHeld, setWeapon, jump]);
 
   if (mpPhase === 'ready') {
     return (
@@ -139,6 +142,7 @@ export default function MultiplayerBlast({ room }: { room: MultiplayerRoom }) {
             setWeapon={setWeapon}
             staminaLeft={staminaLeft}
             setWalkHeld={setWalkHeld}
+            onJump={jump}
           />
           <BlastCanvas
             registerCanvas={registerCanvas}
@@ -148,7 +152,7 @@ export default function MultiplayerBlast({ room }: { room: MultiplayerRoom }) {
             maxSpeed={BA_WEAPONS[selectedWeapon].maxSpeed}
             canAim={isLocalTurn}
             banner={phase === 'aiming' ? { text: bannerText, key: turnIndex } : null}
-            hint="drag to aim, release to fire · arrows to walk · 1/2/3 weapons"
+            hint="drag to aim, release to fire · arrows walk · space jumps · 1/2/3 weapons"
           />
 
           {phase === 'countdown' && (

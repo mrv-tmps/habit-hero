@@ -124,6 +124,7 @@ export interface FxPalette {
   terrain: string;
   cloud: string;
   trajectory: string;
+  hazard: string;
 }
 
 // Debris/smoke are seeded from the blast position so both multiplayer clients see
@@ -197,6 +198,53 @@ export function spawnBootImpactFx(
       size: rng() < 0.5 ? 2 : 1,
       color: pal.smoke,
       gravity: 0.01,
+    }, now);
+  }
+}
+
+// Hard landing: dust burst + screen shake scaled with the fall damage taken
+export function spawnLandingFx(
+  fx: BlastFxState,
+  pal: FxPalette,
+  x: number,
+  y: number,
+  dmg: number,
+  now: number,
+): void {
+  fx.shakeAmp = Math.min(4, 1 + dmg * 0.08);
+  fx.shakeUntil = now + SHAKE_MS;
+  if (fx.reducedMotion) return;
+  const rng = mulberry32((Math.round(x) * 40503) ^ (Math.round(y) * 73856093));
+  for (let i = 0; i < 10; i++) {
+    spawnParticle(fx, {
+      x: x + (rng() * 2 - 1) * 3,
+      y,
+      vx: (rng() * 2 - 1) * 0.9,
+      vy: -(0.1 + rng() * 0.4),
+      lifeMs: 300 + rng() * 250,
+      size: rng() < 0.5 ? 2 : 1,
+      color: rng() < 0.5 ? pal.dirt : pal.smoke,
+      gravity: 0.01,
+    }, now);
+  }
+}
+
+// Splash where a unit hits the hazard floor
+export function spawnSplashFx(fx: BlastFxState, pal: FxPalette, x: number, y: number, now: number): void {
+  fx.shakeAmp = 1;
+  fx.shakeUntil = now + SHAKE_MS * 0.6;
+  if (fx.reducedMotion) return;
+  const rng = mulberry32((Math.round(x) * 19349663) ^ Math.round(y));
+  for (let i = 0; i < 12; i++) {
+    spawnParticle(fx, {
+      x: x + (rng() * 2 - 1) * 4,
+      y,
+      vx: (rng() * 2 - 1) * 0.6,
+      vy: -(0.4 + rng() * 1.0),
+      lifeMs: 350 + rng() * 300,
+      size: rng() < 0.4 ? 2 : 1,
+      color: pal.hazard,
+      gravity: 0.06,
     }, now);
   }
 }

@@ -6,10 +6,13 @@ import {
   BA_UNIT_W,
   BA_UNIT_H,
   BA_KNOCKBACK_SCALE,
+  BA_FALL_SAFE_PX,
+  BA_FALL_DMG_PER_PX,
+  BA_FALL_DMG_CAP,
   BA_WEAPONS,
   type BlastWeaponId,
 } from '@/config/constants';
-import { isSolid } from '@/lib/blastTerrain';
+import { isSolid, carveCircle } from '@/lib/blastTerrain';
 
 // DETERMINISM INVARIANT: no Math.sin/cos/tan/pow anywhere in the step loop.
 // Trig happens once on the shooter's client (drag vector -> vx/vy); the payload
@@ -61,11 +64,18 @@ export interface ShotResult {
   frames: SimFrame[];
   explosionAt: { x: number; y: number } | null;
   carves: Carve[];
+  // Explosion damage only; fall damage from the resulting launch is tracked separately
   damage: Record<string, number>;
-  knockback: Record<string, { dx: number; dy: number }>;
+  fallDamage: Record<string, number>;
+  // Units whose flight ended in the hazard floor — instant KO
+  hazardKO: string[];
+  // Post-explosion ballistic arcs (t starts at the explosion moment) for playback
+  unitFrames: Record<string, SimFrame[]>;
+  finalPositions: Record<string, { x: number; y: number }>;
 }
 
 const MAX_STEPS = 1200;
+const MAX_FLIGHT_STEPS = 600;
 const OUT_MARGIN = 50;
 
 function unitHit(unit: UnitState, px: number, py: number): boolean {
@@ -78,13 +88,93 @@ function unitHit(unit: UnitState, px: number, py: number): boolean {
   );
 }
 
-// Pure: does not mutate terrain or units; caller applies carves/damage/knockback.
+interface FlightOutcome {
+  x: number;
+  y: number;
+  frames: SimFrame[];
+  fallDamage: number;
+  drowned: boolean;
+}
+
+// Integrate a unit's ballistic flight against (post-carve) terrain. Same axis-separated,
+// trig-free stepping as projectiles so every client lands the unit on the same pixel.
+function integrateUnitFlight(
+  terrain: Uint8Array,
+  hazardY: number | null,
+  startX: number,
+  startY: number,
+  vx0: number,
+  vy0: number,
+): FlightOutcome {
+  let x = startX;
+  let y = startY;
+  let vx = vx0;
+  let vy = vy0;
+  let peakY = y;
+  const frames: SimFrame[] = [];
+
+  for (let step = 0; step < MAX_FLIGHT_STEPS; step++) {
+    vy += BA_GRAVITY;
+
+    const nx = Math.max(BA_UNIT_W / 2, Math.min(BA_CANVAS_W - BA_UNIT_W / 2, x + vx));
+    if (isSolid(terrain, nx, y - 1)) {
+      vx = 0;
+    } else {
+      x = nx;
+    }
+
+    if (vy < 0) {
+      const ny = y + vy;
+      if (isSolid(terrain, x, ny - BA_UNIT_H)) {
+        vy = 0;
+      } else {
+        y = ny;
+        if (y < peakY) peakY = y;
+      }
+    } else {
+      // Descend pixel by pixel so we land exactly on the first solid surface
+      let remaining = vy;
+      while (remaining > 0) {
+        if (hazardY !== null && y >= hazardY) {
+          frames.push({ x, y: hazardY, t: step });
+          return { x, y: hazardY, frames, fallDamage: 0, drowned: true };
+        }
+        if (isSolid(terrain, x, y + 1)) {
+          const drop = y - peakY;
+          const fallDamage =
+            drop > BA_FALL_SAFE_PX
+              ? Math.floor(Math.min(BA_FALL_DMG_CAP, (drop - BA_FALL_SAFE_PX) * BA_FALL_DMG_PER_PX))
+              : 0;
+          frames.push({ x, y, t: step });
+          return { x, y, frames, fallDamage, drowned: false };
+        }
+        const d = Math.min(1, remaining);
+        y += d;
+        remaining -= d;
+      }
+    }
+
+    if (hazardY !== null && y >= hazardY) {
+      frames.push({ x, y: hazardY, t: step });
+      return { x, y: hazardY, frames, fallDamage: 0, drowned: true };
+    }
+    frames.push({ x, y, t: step });
+  }
+
+  return { x, y, frames, fallDamage: 0, drowned: false };
+}
+
+// Pure: does not mutate terrain or units; caller applies carves/damage/positions.
+// When resolveUnits is true (default), post-explosion knockback launches and
+// carve-triggered falls are integrated against a scratch copy of the carved terrain.
 export function simulateShot(
   input: ShotInput,
   terrain: Uint8Array,
   units: UnitState[],
   wind: number,
   shooterId: string,
+  hazardY: number | null = null,
+  resolveUnits = true,
 ): ShotResult {
   const cfg = BA_WEAPONS[input.weapon];
   const frames: SimFrame[] = [];
@@ -148,8 +238,12 @@ export function simulateShot(
   }
 
   const damage: Record<string, number> = {};
-  const knockback: Record<string, { dx: number; dy: number }> = {};
+  const knockback: Record<string, { vx: number; vy: number }> = {};
   const carves: Carve[] = [];
+  const fallDamage: Record<string, number> = {};
+  const hazardKO: string[] = [];
+  const unitFrames: Record<string, SimFrame[]> = {};
+  const finalPositions: Record<string, { x: number; y: number }> = {};
 
   if (explosionAt) {
     if (cfg.carves) carves.push({ x: explosionAt.x, y: explosionAt.y, r: cfg.radius });
@@ -167,14 +261,42 @@ export function simulateShot(
 
       const safeDist = Math.max(dist, 1);
       knockback[unit.id] = {
-        dx: (dx / safeDist) * dmg * BA_KNOCKBACK_SCALE,
+        vx: (dx / safeDist) * dmg * BA_KNOCKBACK_SCALE,
         // Upward bias makes hits pop units off the ground, Worms-style
-        dy: (dy / safeDist) * dmg * BA_KNOCKBACK_SCALE - dmg * 0.12,
+        vy: (dy / safeDist) * dmg * BA_KNOCKBACK_SCALE - dmg * 0.02,
       };
     }
   }
 
-  return { frames, explosionAt, carves, damage, knockback };
+  if (resolveUnits && explosionAt) {
+    // Flights collide against the terrain as it looks after this shot's craters
+    const scratch = new Uint8Array(terrain);
+    for (const carve of carves) {
+      carveCircle(scratch, carve.x, carve.y, carve.r);
+    }
+
+    for (const unit of alive) {
+      const postHp = unit.hp - (damage[unit.id] ?? 0);
+      if (postHp <= 0) continue;
+
+      const kb = knockback[unit.id];
+      const ux = Math.max(BA_UNIT_W / 2, Math.min(BA_CANVAS_W - BA_UNIT_W / 2, unit.x));
+      let uy = unit.y;
+      // Pop out of any solid the unit ended up inside (shot origin snap edge cases)
+      while (uy > 0 && isSolid(scratch, ux, uy)) uy--;
+
+      // Grounded and untouched: nothing to integrate
+      if (!kb && isSolid(scratch, ux, uy + 1)) continue;
+
+      const flight = integrateUnitFlight(scratch, hazardY, ux, uy, kb?.vx ?? 0, kb?.vy ?? 0);
+      finalPositions[unit.id] = { x: flight.x, y: flight.y };
+      if (flight.frames.length > 0) unitFrames[unit.id] = flight.frames;
+      if (flight.drowned) hazardKO.push(unit.id);
+      else if (flight.fallDamage > 0) fallDamage[unit.id] = flight.fallDamage;
+    }
+  }
+
+  return { frames, explosionAt, carves, damage, fallDamage, hazardKO, unitFrames, finalPositions };
 }
 
 // Deterministic per-turn wind in [-BA_WIND_MAX, BA_WIND_MAX]
@@ -185,16 +307,4 @@ export function windAt(seed: number, turnIndex: number): number {
   t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
   const r = ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   return (r * 2 - 1) * BA_WIND_MAX;
-}
-
-// After carves/knockback: pop units out of solid ground, then drop them to the surface.
-export function settleUnits(terrain: Uint8Array, units: UnitState[]): void {
-  for (const unit of units) {
-    if (unit.hp <= 0) continue;
-    unit.x = Math.max(BA_UNIT_W / 2, Math.min(BA_CANVAS_W - BA_UNIT_W / 2, unit.x));
-    let y = Math.min(unit.y, BA_CANVAS_H - 1);
-    while (y > 0 && isSolid(terrain, unit.x, y)) y--;
-    while (y < BA_CANVAS_H - 1 && !isSolid(terrain, unit.x, y + 1)) y++;
-    unit.y = y;
-  }
 }

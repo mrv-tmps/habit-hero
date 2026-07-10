@@ -54,6 +54,13 @@ export const BA_UNIT_HP = 100;
 export const BA_UNIT_W = 6;
 export const BA_UNIT_H = 8;
 export const BA_WALK_STAMINA_PX = 40;
+// Jump: apex ≈ impulse² / (2·gravity) ≈ 20px, kept below BA_FALL_SAFE_PX so a
+// flat-ground jump never deals fall damage. Stamina cost allows 3 jumps per turn.
+export const BA_JUMP_IMPULSE = -1.55;
+export const BA_JUMP_STAMINA_COST = 12;
+export const BA_FALL_SAFE_PX = 28;
+export const BA_FALL_DMG_PER_PX = 0.5;
+export const BA_FALL_DMG_CAP = 35;
 export const BA_MAX_LAUNCH_SPEED = 3.4;
 export const BA_COUNTDOWN_MS = 3000;
 export const BA_AI_THINK_MS = 1000;
@@ -96,8 +103,11 @@ export const BA_WEAPONS = {
 
 export type BlastWeaponId = keyof typeof BA_WEAPONS;
 
-// aimError perturbs the AI's chosen launch velocity (px/step); knockback scale is shared
-export const BA_KNOCKBACK_SCALE = 0.28;
+// aimError perturbs the AI's chosen launch velocity (px/step); knockback scale is shared.
+// Knockback is a launch velocity (px/step), not a displacement — gravity compounds it,
+// so the scale is far below the old instant-shove value. Tuned so a max direct hit on
+// flat ground arcs just under BA_FALL_SAFE_PX: fall damage punishes ledges, not every hit.
+export const BA_KNOCKBACK_SCALE = 0.05;
 // candidates scale the AI's search budget (plan quality); grenadeShare is the fraction of
 // candidates spent on grenade lobs; selfHarmWeight is how hard self-damage is penalized.
 export const BA_DIFFICULTY_CONFIG = {

@@ -77,6 +77,10 @@
     --ba-smoke: 240 6% 55%;
     --ba-cloud: 235 20% 22%;
     --ba-unit-outline: 240 20% 4%;
+    --ba-rock: 250 10% 38%;
+    --ba-rock-edge: 250 12% 26%;
+    --ba-hazard: 200 80% 45%;
+    --ba-hazard-deep: 210 70% 28%;
 
     /* Multiplayer player slot colors */
     --player-1: 45 90% 55%;
