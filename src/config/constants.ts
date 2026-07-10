@@ -34,6 +34,22 @@ export const BA_WIND_MAX = 0.018;
 export const BA_TURN_TIME_MS = 30000;
 export const BA_MAX_ROUNDS = 10;
 export const BA_SUDDEN_DEATH_DRAIN = 10;
+
+// Turn pacing scales down with the roster so 8-player matches don't drag: a full
+// round is one turn per alive unit, so both the per-turn clock and the round budget
+// shrink as more players join. Every client derives these from the same participant
+// count, so the values stay identical without any new sync.
+export function baTurnTimeMs(playerCount: number): number {
+  if (playerCount >= 7) return 15000;
+  if (playerCount >= 5) return 20000;
+  return BA_TURN_TIME_MS;
+}
+
+export function baMaxRounds(playerCount: number): number {
+  if (playerCount >= 7) return 5;
+  if (playerCount >= 5) return 7;
+  return BA_MAX_ROUNDS;
+}
 export const BA_UNIT_HP = 100;
 export const BA_UNIT_W = 6;
 export const BA_UNIT_H = 8;

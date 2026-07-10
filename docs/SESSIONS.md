@@ -4,6 +4,30 @@ Chronological log of dev sessions. Latest on top.
 
 ---
 
+## Session 12 — 2026-07-10
+**Goal:** Raise Blast Arena's player cap from 4 to 8 (brief: `.claude/sessions/session-12-blast-arena-8-players.md`)
+
+### Work done
+- `src/config/constants.ts`: `baTurnTimeMs(count)` (30s ≤4, 20s 5–6, 15s 7–8) and `baMaxRounds(count)` (10/7/5) — turn clock and sudden-death budget both scale down with the roster so large matches don't drag
+- `src/hooks/useBlastEngine.ts`: new `turnTimeMs`/`maxRounds` options (default to `BA_TURN_TIME_MS`/`BA_MAX_ROUNDS`); wired into the turn deadline, the displayed timer, and the sudden-death round check
+- `src/hooks/useMultiplayerBlast.ts`: derives both from `participants.length` — every client computes identical values from the shared count, so no new events or seed impact
+- `src/lib/blastTerrain.ts`: `spawnPositions` jitter clamped to `min(slot*0.5, max(0, slot - 24))` so adjacent spawns stay ≥24px apart (2× the bazooka radius); binds only at 6/8 players, unchanged at ≤4
+- `src/pages/CreateRoom.tsx` + `src/components/multiplayer/RoomConfigPanel.tsx`: blast max-players options `2/3/4/6/8`; per-game hard cap removed (all games cap at `MP_MAX_PLAYERS` = 8), which also stops disabling the Blast option with 5+ players in the lobby
+
+### Key decisions
+- Pacing is a pure function of player count (no wire payload) — determinism preserved without touching the seed or adding events
+- Spawn-gap floor anchored on the bazooka's 12px radius (direct-fire); grenades are lobbed so the tighter grenade radius isn't the constraint
+- No DB/migration changes — `max_players` is already INT; blast ignores `question_count`/`time_limit_seconds`
+
+### Verified
+- `tsc` + `npm run build` clean (remaining lint errors are pre-existing, in untouched files)
+- Ran the real `spawnPositions` math across 5000 seeds per count: min adjacent gap 24px at 6/8 players, ≥32px at ≤4
+
+### Follow-ups
+- Manual QA still pending: 8-unit dev-drive (turn rotation, sudden death at round 5, 15s timer, chip-strip layout at 375/768/1024/1440px) and a 2–3 tab multiplayer pacing sanity pass
+
+---
+
 ## Session 9 fix — 2026-07-09
 **Goal:** Fix Blast Arena multiplayer desync (players drifting to different turns/moves mid-game)
 

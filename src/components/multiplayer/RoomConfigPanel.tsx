@@ -11,6 +11,7 @@ import {
   MP_TIME_LIMIT_OPTIONS,
   MP_MATH_DIFFICULTY,
   MP_CODE_LANGUAGES,
+  MP_MAX_PLAYERS,
 } from '@/config/constants';
 import type { RoomConfigUpdate } from '@/hooks/useMultiplayerRoom';
 import type {
@@ -33,13 +34,9 @@ const CODE_LANGUAGE_LABELS: Record<CodeLanguage, string> = {
   c: 'C',
 };
 
-// Blast supports up to 4 units; the other games seat up to 8.
+// Blast offers odd counts up to the 8-unit cap; the other games seat 2/4/6/8.
 function maxPlayerOptions(gameType: GameType): number[] {
-  return gameType === 'blast-arena' ? [2, 3, 4] : [2, 4, 6, 8];
-}
-
-function gameHardCap(gameType: GameType): number {
-  return gameType === 'blast-arena' ? 4 : 8;
+  return gameType === 'blast-arena' ? [2, 3, 4, 6, 8] : [2, 4, 6, 8];
 }
 
 // Switching game type resets settings that do not apply to the new game to that
@@ -52,7 +49,7 @@ function defaultConfigFor(gameType: GameType): RoomConfigUpdate {
     code_language: null,
     question_count: null,
     time_limit_seconds: null,
-    max_players: gameHardCap(gameType),
+    max_players: MP_MAX_PLAYERS,
   };
   if (gameType === 'math-buzzer') return { ...base, difficulty: 'medium', question_count: 10 };
   if (gameType === 'typing-race') return { ...base, typing_mode: 'english', question_count: 10 };
@@ -98,7 +95,7 @@ export default function RoomConfigPanel({ room, playerCount, disabled, onChange 
           </SelectTrigger>
           <SelectContent>
             {GAME_TYPE_OPTIONS.map(opt => {
-              const tooManyPlayers = playerCount > gameHardCap(opt.value);
+              const tooManyPlayers = playerCount > MP_MAX_PLAYERS;
               return (
                 <SelectItem
                   key={opt.value}

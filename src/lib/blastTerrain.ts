@@ -89,7 +89,9 @@ export function spawnPositions(
   const slot = usable / count;
   const positions: { x: number; y: number }[] = [];
   for (let i = 0; i < count; i++) {
-    const jitter = (rng() - 0.5) * slot * 0.5;
+    // Clamp jitter so adjacent spawns stay >=24px apart (2x the largest weapon
+    // radius); at <=4 players slots are wide enough that this never binds.
+    const jitter = (rng() - 0.5) * Math.min(slot * 0.5, Math.max(0, slot - 24));
     const x = Math.round(margin + slot * i + slot / 2 + jitter);
     positions.push({ x, y: surfaceYAt(terrain, x) - 1 });
   }

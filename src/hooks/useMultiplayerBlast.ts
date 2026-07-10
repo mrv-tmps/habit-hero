@@ -18,6 +18,8 @@ import {
   BA_SKIP_GRACE_MS,
   MP_READY_RESYNC_MS,
   MP_READY_RESYNC_MAX,
+  baTurnTimeMs,
+  baMaxRounds,
 } from '@/config/constants';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -78,6 +80,9 @@ export function useMultiplayerBlast(room: MultiplayerRoom): UseMultiplayerBlastR
     unitInits,
     autoSkipTurns: isHost,
     skipGraceMs: BA_SKIP_GRACE_MS,
+    // Derived from roster size — same on every client, so no extra sync needed
+    turnTimeMs: baTurnTimeMs(participants.length),
+    maxRounds: baMaxRounds(participants.length),
     onShotCommitted: (input: ShotInput, turnIndex: number) => {
       broadcast({ type: 'shot_fired', turn_index: turnIndex, ...input });
     },

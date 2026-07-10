@@ -80,6 +80,9 @@ interface UseBlastEngineArgs {
   onTurnResolved?: (resolution: TurnResolution) => void;
   autoSkipTurns?: boolean;
   skipGraceMs?: number;
+  // Pacing overrides — multiplayer scales both down with player count; solo passes neither
+  turnTimeMs?: number;
+  maxRounds?: number;
 }
 
 export interface SimStateSnapshot {
@@ -140,6 +143,8 @@ export function useBlastEngine({
   onTurnResolved,
   autoSkipTurns = true,
   skipGraceMs = 0,
+  turnTimeMs = BA_TURN_TIME_MS,
+  maxRounds = BA_MAX_ROUNDS,
 }: UseBlastEngineArgs): UseBlastEngineReturn {
   const onTurnResolvedRef = useRef(onTurnResolved);
   onTurnResolvedRef.current = onTurnResolved;
@@ -183,7 +188,7 @@ export function useBlastEngine({
   const [turnIndex, setTurnIndex] = useState(0);
   const [unitsView, setUnitsView] = useState<UnitState[]>([]);
   const [wind, setWind] = useState(0);
-  const [turnTimeLeft, setTurnTimeLeft] = useState(BA_TURN_TIME_MS / 1000);
+  const [turnTimeLeft, setTurnTimeLeft] = useState(turnTimeMs / 1000);
   const [winner, setWinner] = useState<UnitState | null>(null);
   const [damageDealt, setDamageDealt] = useState<Record<string, number>>({});
   const [selectedWeapon, setSelectedWeapon] = useState<BlastWeaponId>('bazooka');
@@ -381,15 +386,15 @@ export function useBlastEngine({
     turnIndexRef.current = turnIdx;
     windRef.current = windAt(seed, turnIdx);
     staminaRef.current = BA_WALK_STAMINA_PX;
-    turnEndsAtRef.current = Date.now() + BA_TURN_TIME_MS;
+    turnEndsAtRef.current = Date.now() + turnTimeMs;
     walkHeldRef.current = 0;
     previewRef.current = null;
     setTurnIndex(turnIdx);
     setWind(windRef.current);
     setStaminaLeft(BA_WALK_STAMINA_PX);
-    setTurnTimeLeft(BA_TURN_TIME_MS / 1000);
+    setTurnTimeLeft(turnTimeMs / 1000);
     setPhase('aiming');
-  }, [seed, setPhase]);
+  }, [seed, setPhase, turnTimeMs]);
 
   const finishGame = useCallback(() => {
     const alive = unitsRef.current.filter(u => u.hp > 0);
@@ -416,7 +421,7 @@ export function useBlastEngine({
     }
 
     // Sudden death: after the round budget, every turn start drains all units
-    if (Math.floor(nextTurn / units.length) >= BA_MAX_ROUNDS) {
+    if (Math.floor(nextTurn / units.length) >= maxRounds) {
       for (const u of units) {
         if (u.hp > 0) {
           u.hp = Math.max(0, u.hp - BA_SUDDEN_DEATH_DRAIN);
@@ -437,7 +442,7 @@ export function useBlastEngine({
 
     startTurnAt(nextIdx, nextTurn);
     return true;
-  }, [finishGame, fxDamage, startTurnAt, syncUnits]);
+  }, [finishGame, fxDamage, startTurnAt, syncUnits, maxRounds]);
 
   const buildResolution = useCallback((resolvedTurn: number, carve: TurnResolution['carve']): TurnResolution => ({
     resolved_turn: resolvedTurn,

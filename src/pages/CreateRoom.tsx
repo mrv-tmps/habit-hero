@@ -294,7 +294,7 @@ export default function CreateRoom() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {(isBlast ? [2, 3, 4] : [2, 4, 6, 8]).map(n => (
+                  {(isBlast ? [2, 3, 4, 6, 8] : [2, 4, 6, 8]).map(n => (
                     <SelectItem key={n} value={String(n)} className="cursor-pointer">
                       {n} players
                     </SelectItem>

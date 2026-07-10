@@ -8,10 +8,10 @@ Defers to `MASTER.md` for all global rules. Sessions 8–10 in `.claude/sessions
 
 ## §1 Concept
 
-- 2–4 combatants on a side-view 2D map with destructible terrain. **One unit per player** (Wild Ones model, not Worms teams) — keeps turns fast and state small.
-- Turn-based: on your turn you get `BA_TURN_TIME_MS` (default 30s) to walk (limited stamina), aim, pick a weapon, and fire once. Shot resolves, next player's turn.
+- 2–8 combatants on a side-view 2D map with destructible terrain. **One unit per player** (Wild Ones model, not Worms teams) — keeps turns fast and state small.
+- Turn-based: on your turn you get a walk/aim/fire budget (`baTurnTimeMs(playerCount)`: 30s at ≤4, 20s at 5–6, 15s at 7–8) to walk (limited stamina), aim, pick a weapon, and fire once. Shot resolves, next player's turn.
 - Projectiles follow ballistic physics with per-turn wind. Explosions carve circular holes in the terrain and deal HP damage + knockback.
-- Last unit standing wins. Sudden death after `BA_MAX_ROUNDS` full rounds: all players take 10 HP per round start.
+- Last unit standing wins. Sudden death after `baMaxRounds(playerCount)` full rounds (10 at ≤4, 7 at 5–6, 5 at 7–8): all players take 10 HP per round start. Both the turn clock and round budget shrink with the roster so large matches don't drag.
 - **Solo mode:** 1v1 vs an AI bot (difficulty = aim error + weapon choice quality). Fills the empty-room case, playable anonymously.
 
 ## §2 Rendering — canvas, pixel-art
@@ -61,7 +61,7 @@ Reuses Session 1 infrastructure verbatim: rooms, lobby, `participant_token`, rea
 - Turn order = participant `created_at` order. Active player's client is the only one accepting input.
 - On fire, shooter broadcasts `shot_fired { turnIndex, weapon, x, y, vx, vy }`. **Every client runs the identical deterministic sim** for visuals — no result payload needed for the common case.
 - **Host is authoritative for outcomes**: after the sim settles, host broadcasts `turn_resolved { turnIndex, hp: {nickname: hp}, nextTurnNickname }`. Clients reconcile HP to the host's values (drift should be zero; this is a safety net + handles late-joiner/refresh recovery).
-- Turn timer enforced host-side: no shot within `BA_TURN_TIME_MS` → host broadcasts `turn_skipped`.
+- Turn timer enforced host-side: no shot within `baTurnTimeMs(playerCount)` → host skips the turn. Every client derives the same per-count timer and round budget from the shared participant count, so no new events are needed.
 - Disconnect mid-game: existing host-promotion trigger; a departed player's unit becomes inert and is killed at their next turn.
 
 ## §8 Scoring / XP
@@ -74,7 +74,7 @@ Reuses Session 1 infrastructure verbatim: rooms, lobby, `participant_token`, rea
 ## §9 Registry & data
 
 - `GameType` union += `'blast-arena'`. New `GameConfig` entry (icon: `Bomb` from Lucide), route `/games/blast-arena`, `multiplayerGameType: 'blast-arena'`.
-- **No new DB columns** — terrain/wind/order all derive from existing `seed`; reuse `difficulty`, `max_players` (cap 4 for this game type in CreateRoom UI), `time_limit_seconds` unused.
+- **No new DB columns** — terrain/wind/order all derive from existing `seed`; reuse `difficulty`, `max_players` (cap 8, options `2/3/4/6/8` in the CreateRoom + lobby UI), `time_limit_seconds` unused.
 - New `MultiplayerEvent` members: `shot_fired`, `turn_resolved`, `turn_skipped`.
 
 ## §10 Out of scope (v1)
