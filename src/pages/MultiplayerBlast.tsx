@@ -6,7 +6,7 @@ import { slotColor } from '@/components/multiplayer/playerColors';
 import BlastCanvas from '@/components/blast/BlastCanvas';
 import BlastHud from '@/components/blast/BlastHud';
 import { useMultiplayerBlast } from '@/hooks/useMultiplayerBlast';
-import { BA_UNIT_HP, BA_WEAPONS } from '@/config/constants';
+import { BA_BONUS_WEAPONS, BA_UNIT_HP, BA_WEAPONS } from '@/config/constants';
 import type { MultiplayerRoom } from '@/types/multiplayer';
 import { cn } from '@/lib/utils';
 
@@ -23,16 +23,19 @@ export default function MultiplayerBlast({ room }: { room: MultiplayerRoom }) {
 
   const {
     phase, countdown, turnIndex, activeUnit, unitsView, wind, turnTimeLeft,
-    selectedWeapon, setWeapon, staminaLeft, jump,
+    selectedWeapon, setWeapon, staminaLeft, bonusWeapon, jump, endReposition,
     commitShot, setWalkHeld, updateAim, clearAim, registerCanvas,
   } = engine;
 
   const isLocalTurn = phase === 'aiming' && !!activeUnit?.isLocal;
+  const isRepositioning = phase === 'reposition';
 
-  // Keyboard: arrows/AD walk, up/W/space jump, 1/2/3 weapon (own turn only via engine guards)
+  // Keyboard: arrows/AD walk, up/W/space jump, 1/2/3 weapon, 4 held bonus weapon
+  // (own turn only via engine guards)
   useEffect(() => {
     if (mpPhase !== 'active') return;
-    const weaponIds = Object.keys(BA_WEAPONS) as (keyof typeof BA_WEAPONS)[];
+    const weaponIds = (Object.keys(BA_WEAPONS) as (keyof typeof BA_WEAPONS)[])
+      .filter(id => !BA_BONUS_WEAPONS.includes(id));
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'ArrowLeft' || e.key === 'a') {
         e.preventDefault();
@@ -45,6 +48,8 @@ export default function MultiplayerBlast({ room }: { room: MultiplayerRoom }) {
         jump();
       } else if (e.key >= '1' && e.key <= '3') {
         setWeapon(weaponIds[parseInt(e.key, 10) - 1]);
+      } else if (e.key === '4' && bonusWeapon) {
+        setWeapon(bonusWeapon);
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {
@@ -56,7 +61,7 @@ export default function MultiplayerBlast({ room }: { room: MultiplayerRoom }) {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
     };
-  }, [mpPhase, setWalkHeld, setWeapon, jump]);
+  }, [mpPhase, setWalkHeld, setWeapon, jump, bonusWeapon]);
 
   if (mpPhase === 'ready') {
     return (
@@ -86,6 +91,7 @@ export default function MultiplayerBlast({ room }: { room: MultiplayerRoom }) {
 
   const turnLabel =
     phase === 'projectile' ? '...' :
+    isRepositioning ? 'move!' :
     isLocalTurn ? 'your turn' :
     `${activeUnit?.nickname ?? ''}'s turn`;
   const bannerText = isLocalTurn ? 'your turn' : `${activeUnit?.nickname ?? ''}'s turn`;
@@ -143,6 +149,9 @@ export default function MultiplayerBlast({ room }: { room: MultiplayerRoom }) {
             staminaLeft={staminaLeft}
             setWalkHeld={setWalkHeld}
             onJump={jump}
+            bonusWeapon={bonusWeapon}
+            isRepositioning={isRepositioning}
+            onDoneMoving={endReposition}
           />
           <BlastCanvas
             registerCanvas={registerCanvas}
@@ -151,7 +160,10 @@ export default function MultiplayerBlast({ room }: { room: MultiplayerRoom }) {
             commitShot={commitShot}
             maxSpeed={BA_WEAPONS[selectedWeapon].maxSpeed}
             canAim={isLocalTurn}
-            banner={phase === 'aiming' ? { text: bannerText, key: turnIndex } : null}
+            banner={
+              phase === 'aiming' ? { text: bannerText, key: turnIndex } :
+              isRepositioning ? { text: 'MOVE!', key: -turnIndex - 1 } : null
+            }
             hint="drag to aim, release to fire · arrows walk · space jumps · 1/2/3 weapons"
           />
 

@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  BA_BONUS_WEAPONS,
   BA_CANVAS_W,
   BA_CANVAS_H,
+  BA_CRATE_FALL_MS,
+  BA_CRATE_MAX_ACTIVE,
+  BA_CRATE_PICKUP_PX,
   BA_FALL_DMG_CAP,
   BA_FALL_DMG_PER_PX,
   BA_FALL_SAFE_PX,
@@ -9,6 +13,8 @@ import {
   BA_JUMP_IMPULSE,
   BA_JUMP_STAMINA_COST,
   BA_MAX_ROUNDS,
+  BA_POST_FIRE_MIN_MS,
+  BA_POST_FIRE_MOVE_MS,
   BA_RESOLUTION_FORCE_MS,
   BA_SUDDEN_DEATH_DRAIN,
   BA_TURN_TIME_MS,
@@ -33,12 +39,16 @@ import { paintMapBackdrop, type BlastMapConfig } from '@/config/blastMaps';
 import {
   simulateShot,
   windAt,
+  type Carve,
+  type CrateState,
   type ShotInput,
   type ShotResult,
   type TurnResolution,
   type UnitState,
   type SimFrame,
 } from '@/lib/blastSim';
+import { crateDueRound, pickCrateSpawn } from '@/lib/blastCrates';
+import { playSfx, startBgm, stopBgm } from '@/lib/blastAudio';
 import {
   buildUnitSheet,
   buildProjectileSprites,
@@ -54,6 +64,10 @@ import {
   BOOT_H,
   TOMBSTONE_W,
   TOMBSTONE_H,
+  CRATE_W,
+  CRATE_H,
+  PARACHUTE_W,
+  PARACHUTE_H,
   type ProjectileSprites,
   type SpriteColors,
 } from '@/lib/blastSprites';
@@ -78,7 +92,8 @@ import {
   type FxPalette,
 } from '@/lib/blastFx';
 
-export type BlastPhase = 'countdown' | 'aiming' | 'projectile' | 'done';
+// 'reposition' = the local shooter's post-fire movement window (aiming disabled)
+export type BlastPhase = 'countdown' | 'aiming' | 'projectile' | 'reposition' | 'done';
 
 export interface BlastUnitInit {
   id: string;
@@ -96,6 +111,13 @@ interface UseBlastEngineArgs {
   onShotCommitted?: (input: ShotInput, turnIndex: number) => void;
   // Multiplayer host: broadcast the authoritative turn boundary after every shot/skip
   onTurnResolved?: (resolution: TurnResolution) => void;
+  // Local shooter reports its post-reposition spot (and hp) for the host to fold in
+  onMoveDone?: (turnIndex: number, x: number, y: number, hp: number) => void;
+  // Local unit claimed a crate mid-walk
+  onCratePicked?: (crateId: string, turnIndex: number, byId: string) => void;
+  // Multiplayer: hold the turn boundary for the shooter's move_done (host) or the
+  // host's turn_resolved (non-host) instead of advancing when playback ends
+  waitForMoveDone?: boolean;
   autoSkipTurns?: boolean;
   skipGraceMs?: number;
   // Pacing overrides — multiplayer scales both down with player count; solo passes neither
@@ -123,9 +145,13 @@ interface UseBlastEngineReturn {
   selectedWeapon: BlastWeaponId;
   setWeapon: (w: BlastWeaponId) => void;
   staminaLeft: number;
+  bonusWeapon: BlastWeaponId | null;
   jump: () => void;
+  endReposition: () => void;
   commitShot: (vx: number, vy: number) => void;
   applyRemoteShot: (input: ShotInput, turnIndex: number) => void;
+  applyMoveDone: (turnIndex: number, x: number, y: number, hp: number) => void;
+  applyCratePicked: (crateId: string, byId: string) => void;
   skipCurrentTurn: () => void;
   applyTurnResolution: (resolution: TurnResolution) => void;
   setWalkHeld: (dir: -1 | 0 | 1) => void;
@@ -166,6 +192,9 @@ export function useBlastEngine({
   unitInits,
   onShotCommitted,
   onTurnResolved,
+  onMoveDone,
+  onCratePicked,
+  waitForMoveDone = false,
   autoSkipTurns = true,
   skipGraceMs = 0,
   turnTimeMs = BA_TURN_TIME_MS,
@@ -173,6 +202,10 @@ export function useBlastEngine({
 }: UseBlastEngineArgs): UseBlastEngineReturn {
   const onTurnResolvedRef = useRef(onTurnResolved);
   onTurnResolvedRef.current = onTurnResolved;
+  const onMoveDoneRef = useRef(onMoveDone);
+  onMoveDoneRef.current = onMoveDone;
+  const onCratePickedRef = useRef(onCratePicked);
+  onCratePickedRef.current = onCratePicked;
 
   // ── Simulation state (refs — the rAF renderer reads these; never setState per frame)
   const terrainRef = useRef<Uint8Array>(new Uint8Array(0));
@@ -195,6 +228,17 @@ export function useBlastEngine({
   const turnIndexRef = useRef(0);
   const activeIdxRef = useRef(0);
   const selectedWeaponRef = useRef<BlastWeaponId>('bazooka');
+  const lastCountdownRef = useRef(0);
+  // Crates + held bonus weapons (ephemeral match state, reconciled at turn boundaries)
+  const cratesRef = useRef<(CrateState & { spawnedAt: number })[]>([]);
+  const bonusRef = useRef<Record<string, BlastWeaponId | null>>({});
+  const lastCrateRoundRef = useRef(-1);
+  // Post-fire reposition window (local shooter) and the host's move_done wait
+  const repositionRef = useRef<{ resolvedTurn: number; carve: Carve | null; endsAt: number } | null>(null);
+  const moveWaitRef = useRef<{ resolvedTurn: number; carve: Carve | null; shooterId: string } | null>(null);
+  const moveWaitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Non-host safety valve: advance predictively if the host's resolution never comes
+  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Rendering refs
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -221,6 +265,7 @@ export function useBlastEngine({
   const [damageDealt, setDamageDealt] = useState<Record<string, number>>({});
   const [selectedWeapon, setSelectedWeapon] = useState<BlastWeaponId>('bazooka');
   const [staminaLeft, setStaminaLeft] = useState(BA_WALK_STAMINA_PX);
+  const [bonusWeapon, setBonusWeapon] = useState<BlastWeaponId | null>(null);
 
   const setPhase = useCallback((p: BlastPhase) => {
     phaseRef.current = p;
@@ -229,6 +274,12 @@ export function useBlastEngine({
 
   const syncUnits = useCallback(() => {
     setUnitsView(unitsRef.current.map(u => ({ ...u })));
+  }, []);
+
+  // HUD mirrors only the local unit's bonus slot
+  const syncLocalBonus = useCallback(() => {
+    const local = unitsRef.current.find(u => u.isLocal);
+    setBonusWeapon(local ? bonusRef.current[local.id] ?? null : null);
   }, []);
 
   // ── Terrain offscreen canvas: base fill + dirt texture + edge/grass outlines.
@@ -350,6 +401,10 @@ export function useBlastEngine({
       unitInits.map(u => [u.id, { displayHp: BA_UNIT_HP, hitUntil: 0 }]),
     );
     lastCarvedTurnRef.current = -1;
+    cratesRef.current = [];
+    bonusRef.current = {};
+    lastCrateRoundRef.current = -1;
+    setBonusWeapon(null);
     repaintTerrain();
     syncUnits();
   }, [seed, map, unitInits, repaintTerrain, syncUnits]);
@@ -371,6 +426,7 @@ export function useBlastEngine({
       hazard: readToken(css, '--ba-hazard'),
       hazardDeep: readToken(css, '--ba-hazard-deep'),
       deco: readToken(css, '--ba-deco'),
+      crate: readToken(css, '--ba-crate'),
       explosion: readToken(css, '--ba-explosion'),
       trajectory: readToken(css, '--ba-trajectory'),
       smoke: readToken(css, '--ba-smoke'),
@@ -395,6 +451,8 @@ export function useBlastEngine({
       grenadeShell: palette.grass,
       bootLeather: palette.primary,
       stone: palette.muted,
+      crate: palette.crate,
+      chute: palette.smoke,
     };
     const sheets: Record<number, HTMLCanvasElement> = {};
     for (let i = 1; i <= 8; i++) {
@@ -448,7 +506,35 @@ export function useBlastEngine({
   }, [getFxPal]);
 
   // ── Turn management
+  const clearTurnWaits = useCallback(() => {
+    repositionRef.current = null;
+    moveWaitRef.current = null;
+    if (moveWaitTimerRef.current) {
+      clearTimeout(moveWaitTimerRef.current);
+      moveWaitTimerRef.current = null;
+    }
+    if (holdTimerRef.current) {
+      clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+  }, []);
+
+  // Seeded crate schedule: same (seed, round, terrain) on every client → same crate
+  const spawnDueCrates = useCallback((turnIdx: number) => {
+    const unitCount = unitsRef.current.length;
+    if (unitCount === 0) return;
+    const due = crateDueRound(Math.floor(turnIdx / unitCount));
+    if (due < 0 || due <= lastCrateRoundRef.current) return;
+    lastCrateRoundRef.current = due;
+    if (cratesRef.current.length >= BA_CRATE_MAX_ACTIVE) return;
+    const spawn = pickCrateSpawn(seed, due, terrainRef.current, hazardYRef.current);
+    if (!spawn || cratesRef.current.some(c => c.id === spawn.id)) return;
+    cratesRef.current = [...cratesRef.current, { ...spawn, spawnedAt: Date.now() }];
+    playSfx('crateDrop');
+  }, [seed]);
+
   const startTurnAt = useCallback((idx: number, turnIdx: number) => {
+    clearTurnWaits();
     activeIdxRef.current = idx;
     turnIndexRef.current = turnIdx;
     windRef.current = windAt(seed, turnIdx);
@@ -457,20 +543,25 @@ export function useBlastEngine({
     walkHeldRef.current = 0;
     airborneRef.current = null;
     previewRef.current = null;
+    spawnDueCrates(turnIdx);
     setTurnIndex(turnIdx);
     setWind(windRef.current);
     setStaminaLeft(BA_WALK_STAMINA_PX);
     setTurnTimeLeft(turnTimeMs / 1000);
     setPhase('aiming');
-  }, [seed, setPhase, turnTimeMs]);
+    if (unitsRef.current[idx]?.isLocal) playSfx('turn');
+  }, [clearTurnWaits, seed, setPhase, spawnDueCrates, turnTimeMs]);
 
   const finishGame = useCallback(() => {
     const alive = unitsRef.current.filter(u => u.hp > 0);
+    clearTurnWaits();
     setWinner(alive.length === 1 ? { ...alive[0] } : null);
     setDamageDealt({ ...damageDealtRef.current });
     syncUnits();
     setPhase('done');
-  }, [setPhase, syncUnits]);
+    stopBgm();
+    playSfx(alive.length === 1 && alive[0].isLocal ? 'win' : 'lose');
+  }, [clearTurnWaits, setPhase, syncUnits]);
 
   // Advances to the next turn; returns false when the game ended instead
   const advanceTurn = useCallback((): boolean => {
@@ -519,7 +610,46 @@ export function useBlastEngine({
     hp: Object.fromEntries(unitsRef.current.map(u => [u.id, u.hp])),
     positions: Object.fromEntries(unitsRef.current.map(u => [u.id, { x: u.x, y: u.y }])),
     carve,
+    crates: cratesRef.current.map(({ id, x, y, weapon }) => ({ id, x, y, weapon })),
+    bonus: Object.fromEntries(
+      unitsRef.current.map(u => [u.id, u.hp > 0 ? bonusRef.current[u.id] ?? null : null]),
+    ),
   }), []);
+
+  // Host: close out a turn whose boundary was held for the shooter's move_done
+  const resolveMoveWait = useCallback(() => {
+    const wait = moveWaitRef.current;
+    if (!wait) return;
+    moveWaitRef.current = null;
+    if (moveWaitTimerRef.current) {
+      clearTimeout(moveWaitTimerRef.current);
+      moveWaitTimerRef.current = null;
+    }
+    const advanced = advanceTurn();
+    if (advanced) onTurnResolvedRef.current?.(buildResolution(wait.resolvedTurn, wait.carve));
+  }, [advanceTurn, buildResolution]);
+
+  const resolveMoveWaitRef = useRef(resolveMoveWait);
+  resolveMoveWaitRef.current = resolveMoveWait;
+
+  // Host: fold the shooter's reported reposition outcome into the turn boundary
+  const applyMoveDone = useCallback((turnIdx: number, x: number, y: number, hp: number) => {
+    const wait = moveWaitRef.current;
+    if (!wait || wait.resolvedTurn !== turnIdx) return;
+    const shooter = unitsRef.current.find(u => u.id === wait.shooterId);
+    if (shooter && shooter.hp > 0) {
+      shooter.x = Math.max(BA_UNIT_W / 2, Math.min(BA_CANVAS_W - BA_UNIT_W / 2, x));
+      shooter.y = y;
+      // Reposition falls/hazard are local to the shooter; trust its hp, downward only
+      const clamped = Math.max(0, Math.min(shooter.hp, Math.round(hp)));
+      if (clamped < shooter.hp) {
+        fxDamage(shooter, shooter.hp - clamped, clamped <= 0);
+        shooter.hp = clamped;
+      }
+      syncUnits();
+    }
+    resolveMoveWaitRef.current();
+  }, [fxDamage, syncUnits]);
 
   const clearPendingResolution = useCallback(() => {
     pendingResolutionRef.current = null;
@@ -561,6 +691,32 @@ export function useBlastEngine({
       lastCarvedTurnRef.current = resolvedTurn;
       repaintTerrain();
     }
+
+    if (result.explosionAt) {
+      playSfx(playback.weapon === 'boot' ? 'thud'
+        : (result.carves[0]?.r ?? 0) >= 24 ? 'bigExplosion' : 'explosion');
+    }
+
+    // Crates caught in a carve are destroyed (pop, no damage) — deterministic, since
+    // carves and crate positions match on every client
+    if (result.carves.length > 0 && cratesRef.current.length > 0) {
+      const surviving = cratesRef.current.filter(c => !result.carves.some(cv => {
+        const dx = c.x - cv.x;
+        const dy = c.y - CRATE_H / 2 - cv.y;
+        const reach = cv.r + CRATE_W / 2;
+        return dx * dx + dy * dy <= reach * reach;
+      }));
+      if (surviving.length !== cratesRef.current.length) {
+        const fx = fxRef.current;
+        if (fx) {
+          for (const c of cratesRef.current) {
+            if (!surviving.includes(c)) spawnKoFx(fx, getFxPal(), c.x, c.y, Date.now());
+          }
+        }
+        cratesRef.current = surviving;
+        playSfx('cratePop');
+      }
+    }
   }, [getFxPal, repaintTerrain]);
 
   const showExplosionRef = useRef(showExplosion);
@@ -599,6 +755,7 @@ export function useBlastEngine({
         if (unit.id !== shooterId) dealtToOthers += fall;
         fxDamage(unit, fall, unit.hp <= 0 && !drowned);
         if (fxRef.current) spawnLandingFx(fxRef.current, getFxPal(), unit.x, unit.y, fall, Date.now());
+        playSfx('thud');
       }
       if (drowned && unit.hp > 0) {
         unit.hp = 0;
@@ -607,25 +764,77 @@ export function useBlastEngine({
           spawnSplashFx(fx, getFxPal(), unit.x, unit.y, Date.now());
           spawnKoFx(fx, getFxPal(), unit.x, unit.y, Date.now());
         }
+        playSfx('splash');
       }
+      if (wasAlive && unit.hp <= 0) playSfx('ko');
     }
     damageDealtRef.current[shooterId] =
       (damageDealtRef.current[shooterId] ?? 0) + dealtToOthers;
 
     syncUnits();
 
-    const advanced = advanceTurn();
-    if (advanced) {
-      onTurnResolvedRef.current?.(buildResolution(resolvedTurn, result.carves[0] ?? null));
-    }
-
-    // A host resolution may have arrived while we were animating — it wins
+    // A host resolution may have arrived while we were animating — it wins outright
     const pending = pendingResolutionRef.current;
     if (pending && pending.resolved_turn === resolvedTurn) {
       clearPendingResolution();
       hardApplyResolutionRef.current(pending);
+      return;
     }
-  }, [advanceTurn, buildResolution, clearPendingResolution, fxDamage, getFxPal, showExplosion, syncUnits]);
+
+    const shooter = units.find(u => u.id === shooterId);
+    const carve = result.carves[0] ?? null;
+    const aliveCount = units.filter(u => u.hp > 0).length;
+    const windowMs = Math.min(BA_POST_FIRE_MOVE_MS, turnEndsAtRef.current - Date.now());
+
+    // §1 post-fire reposition: the local shooter keeps moving while stamina and the
+    // turn clock allow; the turn resolves in finishReposition instead
+    if (aliveCount > 1 && shooter?.isLocal && shooter.hp > 0 &&
+        staminaRef.current > 0 && windowMs > BA_POST_FIRE_MIN_MS) {
+      repositionRef.current = { resolvedTurn, carve, endsAt: Date.now() + windowMs };
+      setTurnTimeLeft(Math.ceil(windowMs / 1000));
+      setPhase('reposition');
+      playSfx('move');
+      return;
+    }
+
+    // No window opened: still signal the host so it doesn't sit out the timeout
+    if (shooter?.isLocal && !autoSkipTurns) {
+      onMoveDoneRef.current?.(resolvedTurn, shooter.x, shooter.y, shooter.hp);
+    }
+
+    // MP host with a live remote shooter: hold the boundary for move_done or timeout
+    if (waitForMoveDone && autoSkipTurns && aliveCount > 1 &&
+        shooter && !shooter.isLocal && shooter.hp > 0) {
+      moveWaitRef.current = { resolvedTurn, carve, shooterId };
+      const deadline =
+        Math.min(Date.now() + BA_POST_FIRE_MOVE_MS, turnEndsAtRef.current) + skipGraceMs;
+      moveWaitTimerRef.current = setTimeout(
+        () => resolveMoveWaitRef.current(),
+        Math.max(0, deadline - Date.now()),
+      );
+      return;
+    }
+
+    // MP non-host with a live remote shooter: hold for the host's turn_resolved; the
+    // timer only fires if the host vanished, so the game still advances predictively
+    if (waitForMoveDone && !autoSkipTurns && aliveCount > 1 &&
+        shooter && !shooter.isLocal && shooter.hp > 0) {
+      const deadline = Math.min(Date.now() + BA_POST_FIRE_MOVE_MS, turnEndsAtRef.current) +
+        skipGraceMs + BA_RESOLUTION_FORCE_MS;
+      holdTimerRef.current = setTimeout(() => {
+        holdTimerRef.current = null;
+        if (phaseRef.current === 'projectile' && turnIndexRef.current === resolvedTurn) {
+          advanceTurn();
+        }
+      }, Math.max(0, deadline - Date.now()));
+      return;
+    }
+
+    const advanced = advanceTurn();
+    if (advanced) {
+      onTurnResolvedRef.current?.(buildResolution(resolvedTurn, carve));
+    }
+  }, [advanceTurn, autoSkipTurns, buildResolution, clearPendingResolution, fxDamage, getFxPal, setPhase, showExplosion, skipGraceMs, syncUnits, waitForMoveDone]);
 
   const applyShotResultRef = useRef(applyShotResult);
   applyShotResultRef.current = applyShotResult;
@@ -653,6 +862,16 @@ export function useBlastEngine({
         unit.y = pos.y;
       }
     }
+
+    // Crates + bonus slots snap to the host's view; keep spawnedAt so a crate that
+    // is still parachuting locally doesn't restart its descent
+    const prevSpawns = new Map(cratesRef.current.map(c => [c.id, c.spawnedAt]));
+    cratesRef.current = (res.crates ?? []).map(c => ({
+      ...c,
+      spawnedAt: prevSpawns.get(c.id) ?? 0,
+    }));
+    bonusRef.current = { ...(res.bonus ?? {}) };
+    syncLocalBonus();
     syncUnits();
 
     if (unitsRef.current.filter(u => u.hp > 0).length <= 1) {
@@ -661,10 +880,30 @@ export function useBlastEngine({
     }
     const nextIdx = unitsRef.current.findIndex(u => u.id === res.next_active_id);
     if (nextIdx >= 0) startTurnAt(nextIdx, res.next_turn);
-  }, [finishGame, fxDamage, repaintTerrain, startTurnAt, syncUnits]);
+  }, [finishGame, fxDamage, repaintTerrain, startTurnAt, syncLocalBonus, syncUnits]);
 
   const hardApplyResolutionRef = useRef(hardApplyResolution);
   hardApplyResolutionRef.current = hardApplyResolution;
+
+  // Close the local shooter's reposition window and resolve the held turn boundary
+  const finishReposition = useCallback(() => {
+    const rep = repositionRef.current;
+    if (!rep || phaseRef.current !== 'reposition') return;
+    repositionRef.current = null;
+    walkHeldRef.current = 0;
+    const shooter = unitsRef.current[activeIdxRef.current];
+    if (!autoSkipTurns) {
+      // Report the outcome, then advance predictively; the host's resolution reconciles
+      if (shooter) onMoveDoneRef.current?.(rep.resolvedTurn, shooter.x, shooter.y, shooter.hp);
+      advanceTurn();
+      return;
+    }
+    const advanced = advanceTurn();
+    if (advanced) onTurnResolvedRef.current?.(buildResolution(rep.resolvedTurn, rep.carve));
+  }, [advanceTurn, autoSkipTurns, buildResolution]);
+
+  const finishRepositionRef = useRef(finishReposition);
+  finishRepositionRef.current = finishReposition;
 
   const applyTurnResolution = useCallback((res: TurnResolution) => {
     // Stale or duplicate boundary — we're already past it
@@ -720,6 +959,20 @@ export function useBlastEngine({
       trailFrame: -1,
     };
     playbackRef.current = playback;
+    // Bonus weapons are one-use: consume the slot on every client at fire time
+    if (BA_BONUS_WEAPONS.includes(input.weapon)) {
+      bonusRef.current[shooter.id] = null;
+      syncLocalBonus();
+      if (shooter.isLocal && selectedWeaponRef.current === input.weapon) {
+        selectedWeaponRef.current = 'bazooka';
+        setSelectedWeapon('bazooka');
+      }
+    }
+    playSfx(
+      input.weapon === 'boot' ? 'boot'
+        : input.weapon === 'grenade' || input.weapon === 'barrel' ? 'throw'
+        : 'fire',
+    );
     // Firing recoil + muzzle puff (cosmetic)
     recoilRef.current = { id: shooter.id, until: Date.now() + 200, dir: input.vx >= 0 ? -1 : 1 };
     if (fxRef.current) spawnMuzzleFx(fxRef.current, getFxPal(), input.x, input.y, Date.now());
@@ -733,7 +986,7 @@ export function useBlastEngine({
         applyShotResultRef.current(playback);
       }
     }, durationMs + 600);
-  }, [getFxPal, setPhase]);
+  }, [getFxPal, setPhase, syncLocalBonus]);
 
   const commitShot = useCallback((vx: number, vy: number) => {
     const active = unitsRef.current[activeIdxRef.current];
@@ -788,18 +1041,55 @@ export function useBlastEngine({
   }, []);
 
   const setWeapon = useCallback((w: BlastWeaponId) => {
+    // Bonus weapons are selectable only while the local unit actually holds one
+    if (BA_BONUS_WEAPONS.includes(w)) {
+      const local = unitsRef.current.find(u => u.isLocal);
+      if (!local || bonusRef.current[local.id] !== w) return;
+    }
     selectedWeaponRef.current = w;
     setSelectedWeapon(w);
+    playSfx('click');
   }, []);
 
   const setWalkHeld = useCallback((dir: -1 | 0 | 1) => {
     walkHeldRef.current = dir;
   }, []);
 
+  // Local unit walked into a live crate: claim it (first claim wins; the host's
+  // resolution overrides double-claims at the next turn boundary)
+  const tryPickup = useCallback((unit: UnitState) => {
+    if (unit.hp <= 0 || bonusRef.current[unit.id]) return;
+    const crate = cratesRef.current.find(
+      c => Math.abs(c.x - unit.x) <= BA_CRATE_PICKUP_PX &&
+        Math.abs(c.y - unit.y) <= BA_CRATE_PICKUP_PX + 4,
+    );
+    if (!crate) return;
+    cratesRef.current = cratesRef.current.filter(c => c.id !== crate.id);
+    bonusRef.current[unit.id] = crate.weapon;
+    syncLocalBonus();
+    if (fxRef.current) spawnMuzzleFx(fxRef.current, getFxPal(), crate.x, crate.y - 4, Date.now());
+    playSfx('pickup');
+    onCratePickedRef.current?.(crate.id, turnIndexRef.current, unit.id);
+  }, [getFxPal, syncLocalBonus]);
+
+  // Remote claim: crate existence is the idempotency check — a duplicate or lost
+  // race removes nothing, and the turn resolution self-heals any disagreement
+  const applyCratePicked = useCallback((crateId: string, byId: string) => {
+    if (phaseRef.current === 'done') return;
+    const crate = cratesRef.current.find(c => c.id === crateId);
+    if (!crate) return;
+    cratesRef.current = cratesRef.current.filter(c => c.id !== crateId);
+    const unit = unitsRef.current.find(u => u.id === byId);
+    if (unit && unit.hp > 0 && !bonusRef.current[byId]) {
+      bonusRef.current[byId] = crate.weapon;
+      syncLocalBonus();
+    }
+  }, [syncLocalBonus]);
+
   // Jump is local-only, like walking: remote clients learn the position from the
   // shot payload and the host's turn resolution, so this needs zero netcode.
   const jump = useCallback(() => {
-    if (phaseRef.current !== 'aiming') return;
+    if (phaseRef.current !== 'aiming' && phaseRef.current !== 'reposition') return;
     const unit = unitsRef.current[activeIdxRef.current];
     if (!unit?.isLocal || unit.hp <= 0) return;
     if (airborneRef.current) return;
@@ -809,6 +1099,7 @@ export function useBlastEngine({
     setStaminaLeft(Math.round(staminaRef.current));
     airborneRef.current = { vy: BA_JUMP_IMPULSE, peakY: unit.y };
     if (fxRef.current) spawnWalkDust(fxRef.current, getFxPal(), unit.x, unit.y, Date.now());
+    playSfx('jump');
   }, [getFxPal]);
 
   const getSimState = useCallback((): SimStateSnapshot => ({
@@ -828,7 +1119,12 @@ export function useBlastEngine({
         clearInterval(interval);
         startTurnAt(0, 0);
       } else {
-        setCountdown(Math.ceil(left / 1000));
+        const next = Math.ceil(left / 1000);
+        if (next !== lastCountdownRef.current) {
+          lastCountdownRef.current = next;
+          playSfx('tick');
+        }
+        setCountdown(next);
       }
     };
     const interval = setInterval(tick, 100);
@@ -850,11 +1146,45 @@ export function useBlastEngine({
     return () => clearInterval(interval);
   }, [phase, turnIndex, autoSkipTurns, skipGraceMs, skipCurrentTurn]);
 
+  // ── Reposition countdown: ends on timeout or exhausted stamina (once grounded, so a
+  // jump in progress can land); a hard cap covers a unit somehow stuck mid-air
+  useEffect(() => {
+    if (phase !== 'reposition') return;
+    const interval = setInterval(() => {
+      const rep = repositionRef.current;
+      if (!rep) return;
+      const leftMs = rep.endsAt - Date.now();
+      setTurnTimeLeft(Math.max(0, Math.ceil(leftMs / 1000)));
+      const grounded = !airborneRef.current;
+      if (grounded && (leftMs <= 0 || staminaRef.current <= 0)) {
+        finishReposition();
+      } else if (leftMs <= -2000) {
+        const unit = unitsRef.current[activeIdxRef.current];
+        if (unit) {
+          let y = unit.y;
+          while (y < BA_CANVAS_H && !isSolid(terrainRef.current, unit.x, y + 1)) y++;
+          unit.y = y;
+        }
+        airborneRef.current = null;
+        finishReposition();
+      }
+    }, 200);
+    return () => clearInterval(interval);
+  }, [phase, finishReposition]);
+
+  // ── Audio: the battle loop runs while a match is live; finishGame stops it
+  useEffect(() => {
+    if (phase === 'done') stopBgm();
+    else if (startAt > 0) startBgm();
+  }, [phase, startAt]);
+  useEffect(() => () => stopBgm(), []);
+
   // ── Walking + local vertical physics (interval, not rAF — discrete steps).
   // Movement is local-only during your own turn; the shot payload / host resolution
   // carry the outcome, so falls and hazard deaths here reconcile at the turn boundary.
+  // Runs for the pre-shot walk and the post-fire reposition window alike.
   useEffect(() => {
-    if (phase !== 'aiming') return;
+    if (phase !== 'aiming' && phase !== 'reposition') return;
     let stepCount = 0;
 
     const interval = setInterval(() => {
@@ -872,9 +1202,12 @@ export function useBlastEngine({
           if (drowned) spawnSplashFx(fx, getFxPal(), unit.x, unit.y, Date.now());
           spawnKoFx(fx, getFxPal(), unit.x, unit.y, Date.now());
         }
+        playSfx(drowned ? 'splash' : 'ko');
         syncUnits();
-        // Solo player / MP host advance immediately; non-hosts wait for the host skip
-        if (autoSkipTurns) skipCurrentTurn();
+        // Reposition deaths resolve the held turn; otherwise the solo player / MP
+        // host advance immediately and non-hosts wait for the host skip
+        if (phaseRef.current === 'reposition') finishRepositionRef.current();
+        else if (autoSkipTurns) skipCurrentTurn();
       };
 
       // Horizontal: works grounded and mid-air (so jumps can cross gaps); same stamina
@@ -923,53 +1256,61 @@ export function useBlastEngine({
 
       // Vertical integration: 3 sim substeps per 50ms tick keeps 60Hz physics constants
       const air = airborneRef.current;
-      if (!air) return;
-      for (let s = 0; s < 3 && airborneRef.current; s++) {
-        air.vy += BA_GRAVITY;
-        if (air.vy < 0) {
-          const ny = unit.y + air.vy;
-          if (isSolid(terrain, unit.x, ny - BA_UNIT_H)) {
-            air.vy = 0; // ceiling
+      if (air) {
+        for (let s = 0; s < 3 && airborneRef.current; s++) {
+          air.vy += BA_GRAVITY;
+          if (air.vy < 0) {
+            const ny = unit.y + air.vy;
+            if (isSolid(terrain, unit.x, ny - BA_UNIT_H)) {
+              air.vy = 0; // ceiling
+            } else {
+              unit.y = ny;
+              if (unit.y < air.peakY) air.peakY = unit.y;
+            }
           } else {
-            unit.y = ny;
-            if (unit.y < air.peakY) air.peakY = unit.y;
-          }
-        } else {
-          let remaining = air.vy;
-          while (remaining > 0) {
-            if (hazardY !== null && unit.y >= hazardY) {
-              unit.y = hazardY;
-              die(true);
-              return;
-            }
-            if (isSolid(terrain, unit.x, unit.y + 1)) {
-              const drop = unit.y - air.peakY;
-              airborneRef.current = null;
-              if (drop > BA_FALL_SAFE_PX) {
-                const dmg = Math.floor(
-                  Math.min(BA_FALL_DMG_CAP, (drop - BA_FALL_SAFE_PX) * BA_FALL_DMG_PER_PX),
-                );
-                if (dmg > 0) {
-                  unit.hp = Math.max(0, unit.hp - dmg);
-                  fxDamage(unit, dmg, unit.hp <= 0);
-                  if (fxRef.current) {
-                    spawnLandingFx(fxRef.current, getFxPal(), unit.x, unit.y, dmg, Date.now());
-                  }
-                  syncUnits();
-                  if (unit.hp <= 0 && autoSkipTurns) skipCurrentTurn();
-                }
+            let remaining = air.vy;
+            while (remaining > 0) {
+              if (hazardY !== null && unit.y >= hazardY) {
+                unit.y = hazardY;
+                die(true);
+                return;
               }
-              break;
+              if (isSolid(terrain, unit.x, unit.y + 1)) {
+                const drop = unit.y - air.peakY;
+                airborneRef.current = null;
+                if (drop > BA_FALL_SAFE_PX) {
+                  const dmg = Math.floor(
+                    Math.min(BA_FALL_DMG_CAP, (drop - BA_FALL_SAFE_PX) * BA_FALL_DMG_PER_PX),
+                  );
+                  if (dmg > 0) {
+                    unit.hp = Math.max(0, unit.hp - dmg);
+                    fxDamage(unit, dmg, unit.hp <= 0);
+                    if (fxRef.current) {
+                      spawnLandingFx(fxRef.current, getFxPal(), unit.x, unit.y, dmg, Date.now());
+                    }
+                    playSfx('thud');
+                    syncUnits();
+                    if (unit.hp <= 0) {
+                      if (phaseRef.current === 'reposition') finishRepositionRef.current();
+                      else if (autoSkipTurns) skipCurrentTurn();
+                    }
+                  }
+                }
+                break;
+              }
+              const d = Math.min(1, remaining);
+              unit.y += d;
+              remaining -= d;
             }
-            const d = Math.min(1, remaining);
-            unit.y += d;
-            remaining -= d;
           }
         }
       }
+
+      // Crate pickup happens mid-walk (pre-shot or reposition), never for remote units
+      tryPickup(unit);
     }, WALK_TICK_MS);
     return () => clearInterval(interval);
-  }, [phase, turnIndex, getFxPal, autoSkipTurns, skipCurrentTurn, fxDamage, syncUnits]);
+  }, [phase, turnIndex, getFxPal, autoSkipTurns, skipCurrentTurn, fxDamage, syncUnits, tryPickup]);
 
   // ── Renderer (rAF; reads refs only — state application never depends on this loop).
   // Everything here is presentation: sprites, particles, shake. Sim state is applied
@@ -1027,6 +1368,30 @@ export function useBlastEngine({
             Math.round(unit.x - TOMBSTONE_W / 2),
             Math.round(unit.y - TOMBSTONE_H),
           );
+        }
+      }
+
+      // Supply crates: parachute descent is render-only — the logical resting spot
+      // (crate.y) exists from the moment the crate spawns
+      if (sprites) {
+        for (const crate of cratesRef.current) {
+          const t = crate.spawnedAt === 0 || (fx && fx.reducedMotion)
+            ? 1
+            : Math.min(1, (now - crate.spawnedAt) / BA_CRATE_FALL_MS);
+          const drawTop = Math.round(-CRATE_H + crate.y * t);
+          const drawLeft = Math.round(crate.x - CRATE_W / 2);
+          ctx.drawImage(sprites.crate, drawLeft, drawTop);
+          if (t < 1) {
+            ctx.drawImage(
+              sprites.parachute,
+              Math.round(crate.x - PARACHUTE_W / 2),
+              drawTop - PARACHUTE_H - 1,
+            );
+          } else if (Math.floor(now / 400) % 3 === 0) {
+            // Periodic glint so the crate reads against any terrain
+            ctx.fillStyle = pal.trajectory;
+            ctx.fillRect(drawLeft + 1 + (Math.floor(now / 200) % 2) * 4, drawTop + 1, 1, 1);
+          }
         }
       }
 
@@ -1243,9 +1608,11 @@ export function useBlastEngine({
     return () => cancelAnimationFrame(rafRef.current);
   }, []);
 
-  // Clear the force timer on unmount
+  // Clear pending timers on unmount
   useEffect(() => () => {
     if (forceTimerRef.current) clearTimeout(forceTimerRef.current);
+    if (moveWaitTimerRef.current) clearTimeout(moveWaitTimerRef.current);
+    if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
   }, []);
 
   const registerCanvas = useCallback((el: HTMLCanvasElement | null) => {
@@ -1271,9 +1638,13 @@ export function useBlastEngine({
     selectedWeapon,
     setWeapon,
     staminaLeft,
+    bonusWeapon,
     jump,
+    endReposition: finishReposition,
     commitShot,
     applyRemoteShot,
+    applyMoveDone,
+    applyCratePicked,
     skipCurrentTurn,
     applyTurnResolution,
     setWalkHeld,

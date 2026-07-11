@@ -71,4 +71,9 @@ export type MultiplayerEvent =
   | { type: 'question_advance'; question_idx: number; claimer_nickname: string }
   | { type: 'room_updated' }
   | BlastShotEvent
-  | { type: 'turn_resolved'; resolution: TurnResolution };
+  | { type: 'turn_resolved'; resolution: TurnResolution }
+  // Post-fire reposition: the shooter reports its final spot (and hp — falls and
+  // hazard hits during the window are local-only) so the host can fold it into
+  // the authoritative turn_resolved.
+  | { type: 'move_done'; turn_index: number; x: number; y: number; hp: number }
+  | { type: 'crate_picked'; crate_id: string; turn_index: number; by_id: string };

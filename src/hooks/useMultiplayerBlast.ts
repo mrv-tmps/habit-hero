@@ -85,6 +85,7 @@ export function useMultiplayerBlast(room: MultiplayerRoom): UseMultiplayerBlastR
     unitInits,
     autoSkipTurns: isHost,
     skipGraceMs: BA_SKIP_GRACE_MS,
+    waitForMoveDone: true,
     // Derived from roster size — same on every client, so no extra sync needed
     turnTimeMs: baTurnTimeMs(participants.length),
     maxRounds: baMaxRounds(participants.length),
@@ -93,6 +94,13 @@ export function useMultiplayerBlast(room: MultiplayerRoom): UseMultiplayerBlastR
     },
     onTurnResolved: resolution => {
       if (isHostRef.current) broadcast({ type: 'turn_resolved', resolution });
+    },
+    onMoveDone: (turnIndex, x, y, hp) => {
+      // The host folds its own reposition outcome in locally; only others report
+      if (!isHostRef.current) broadcast({ type: 'move_done', turn_index: turnIndex, x, y, hp });
+    },
+    onCratePicked: (crateId, turnIndex, byId) => {
+      broadcast({ type: 'crate_picked', crate_id: crateId, turn_index: turnIndex, by_id: byId });
     },
   });
 
@@ -284,6 +292,17 @@ export function useMultiplayerBlast(room: MultiplayerRoom): UseMultiplayerBlastR
       if (event.type === 'turn_resolved') {
         // Authoritative turn boundary from the host — drift self-heals here
         if (!isHostRef.current) engineRef.current.applyTurnResolution(event.resolution);
+      }
+
+      if (event.type === 'move_done') {
+        // Only the host consumes reposition reports; it folds them into turn_resolved
+        if (isHostRef.current) {
+          engineRef.current.applyMoveDone(event.turn_index, event.x, event.y, event.hp);
+        }
+      }
+
+      if (event.type === 'crate_picked') {
+        engineRef.current.applyCratePicked(event.crate_id, event.by_id);
       }
 
       if (event.type === 'game_end') {

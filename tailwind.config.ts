@@ -71,6 +71,7 @@ export default {
           live: "hsl(var(--game-live))",
           comingSoon: "hsl(var(--game-coming-soon))",
         },
+        baCrate: "hsl(var(--ba-crate))",
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
           foreground: "hsl(var(--sidebar-foreground))",

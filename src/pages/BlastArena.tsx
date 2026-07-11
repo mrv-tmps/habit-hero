@@ -27,6 +27,7 @@ import BlastCanvas from '@/components/blast/BlastCanvas';
 import BlastHud from '@/components/blast/BlastHud';
 import {
   BA_AI_THINK_MS,
+  BA_BONUS_WEAPONS,
   BA_COUNTDOWN_MS,
   BA_DIFFICULTY_CONFIG,
   BA_WEAPONS,
@@ -73,12 +74,13 @@ function BlastMatch({ seed, startAt, mapId, difficulty, characterName, onEnd }: 
 
   const {
     phase, countdown, turnIndex, activeUnit, wind, turnTimeLeft, winner, damageDealt,
-    selectedWeapon, setWeapon, staminaLeft, jump,
+    selectedWeapon, setWeapon, staminaLeft, bonusWeapon, jump, endReposition,
     commitShot, applyRemoteShot, setWalkHeld, updateAim, clearAim,
     registerCanvas, getSimState,
   } = engine;
 
   const isLocalTurn = phase === 'aiming' && !!activeUnit?.isLocal;
+  const isRepositioning = phase === 'reposition';
 
   // AI turn driver
   useEffect(() => {
@@ -93,9 +95,10 @@ function BlastMatch({ seed, startAt, mapId, difficulty, characterName, onEnd }: 
     return () => clearTimeout(timeout);
   }, [phase, turnIndex, activeUnit, difficulty, getSimState, applyRemoteShot]);
 
-  // Keyboard: arrows/AD walk, up/W/space jump, 1/2/3 weapon
+  // Keyboard: arrows/AD walk, up/W/space jump, 1/2/3 weapon, 4 held bonus weapon
   useEffect(() => {
-    const weaponIds = Object.keys(BA_WEAPONS) as (keyof typeof BA_WEAPONS)[];
+    const weaponIds = (Object.keys(BA_WEAPONS) as (keyof typeof BA_WEAPONS)[])
+      .filter(id => !BA_BONUS_WEAPONS.includes(id));
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'ArrowLeft' || e.key === 'a') {
         e.preventDefault();
@@ -108,6 +111,8 @@ function BlastMatch({ seed, startAt, mapId, difficulty, characterName, onEnd }: 
         jump();
       } else if (e.key >= '1' && e.key <= '3') {
         setWeapon(weaponIds[parseInt(e.key, 10) - 1]);
+      } else if (e.key === '4' && bonusWeapon) {
+        setWeapon(bonusWeapon);
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {
@@ -119,7 +124,7 @@ function BlastMatch({ seed, startAt, mapId, difficulty, characterName, onEnd }: 
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
     };
-  }, [setWalkHeld, setWeapon, jump]);
+  }, [setWalkHeld, setWeapon, jump, bonusWeapon]);
 
   // Report end exactly once
   const endedRef = useRef(false);
@@ -131,7 +136,9 @@ function BlastMatch({ seed, startAt, mapId, difficulty, characterName, onEnd }: 
   }, [phase, winner, damageDealt, onEnd]);
 
   const turnLabel =
-    phase === 'projectile' ? '...' : isLocalTurn ? 'your turn' : `${activeUnit?.nickname ?? ''}'s turn`;
+    phase === 'projectile' ? '...' :
+    isRepositioning ? 'move!' :
+    isLocalTurn ? 'your turn' : `${activeUnit?.nickname ?? ''}'s turn`;
   const bannerText = isLocalTurn ? 'your turn' : `${activeUnit?.nickname ?? ''}'s turn`;
 
   return (
@@ -146,6 +153,9 @@ function BlastMatch({ seed, startAt, mapId, difficulty, characterName, onEnd }: 
         staminaLeft={staminaLeft}
         setWalkHeld={setWalkHeld}
         onJump={jump}
+        bonusWeapon={bonusWeapon}
+        isRepositioning={isRepositioning}
+        onDoneMoving={endReposition}
       />
       <BlastCanvas
         registerCanvas={registerCanvas}
@@ -154,7 +164,10 @@ function BlastMatch({ seed, startAt, mapId, difficulty, characterName, onEnd }: 
         commitShot={commitShot}
         maxSpeed={BA_WEAPONS[selectedWeapon].maxSpeed}
         canAim={isLocalTurn}
-        banner={phase === 'aiming' ? { text: bannerText, key: turnIndex } : null}
+        banner={
+          phase === 'aiming' ? { text: bannerText, key: turnIndex } :
+          isRepositioning ? { text: 'MOVE!', key: -turnIndex - 1 } : null
+        }
         hint="drag to aim, release to fire · arrows walk · space jumps · 1/2/3 weapons"
       />
 

@@ -49,6 +49,14 @@ export interface Carve {
   r: number;
 }
 
+// A live (unclaimed) supply crate; logical position is fixed the moment it spawns
+export interface CrateState {
+  id: string;
+  x: number;
+  y: number;
+  weapon: BlastWeaponId;
+}
+
 // Authoritative turn boundary broadcast by the host after every shot or skip.
 // Non-hosts snap to this state, so drift (missed events, throttled tabs) self-heals.
 export interface TurnResolution {
@@ -58,6 +66,9 @@ export interface TurnResolution {
   hp: Record<string, number>;
   positions: Record<string, { x: number; y: number }>;
   carve: Carve | null;
+  // Live crates + per-unit held bonus, so missed crate_picked events self-heal too
+  crates: CrateState[];
+  bonus: Record<string, BlastWeaponId | null>;
 }
 
 export interface ShotResult {

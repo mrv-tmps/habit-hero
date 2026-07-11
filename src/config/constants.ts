@@ -69,6 +69,19 @@ export const BA_SKIP_GRACE_MS = 2000;
 // Force-apply a host resolution if local playback hasn't finished (throttled background tab)
 export const BA_RESOLUTION_FORCE_MS = 5000;
 
+// Post-fire reposition window: capped at this, further clamped to the remaining turn
+// clock, so a turn never runs past its normal deadline + grace
+export const BA_POST_FIRE_MOVE_MS = 5000;
+// Windows shorter than this aren't worth opening (no meaningful move possible)
+export const BA_POST_FIRE_MIN_MS = 500;
+
+// Crate drops: seeded schedule — a crate lands at the start of every Nth round
+export const BA_CRATE_INTERVAL_ROUNDS = 2;
+export const BA_CRATE_MAX_ACTIVE = 2;
+export const BA_CRATE_PICKUP_PX = 6;
+// Parachute descent is render-only; the logical resting spot exists immediately
+export const BA_CRATE_FALL_MS = 1500;
+
 export interface BlastWeaponConfig {
   label: string;
   damage: number;
@@ -79,6 +92,8 @@ export interface BlastWeaponConfig {
   carves: boolean;
   maxSpeed: number;
   explodeOnUnitContact: boolean;
+  // Bonus weapons come only from crates: one-use, excluded from the standard HUD row
+  bonus?: boolean;
 }
 
 // Niches: bazooka = versatile but wind-sensitive; grenade = highest damage, needs a lob;
@@ -99,9 +114,24 @@ export const BA_WEAPONS = {
     restitution: 0, fuseSteps: 10, carves: false,
     maxSpeed: 1.6, explodeOnUnitContact: true,
   },
+  // Crate-only bonus weapons: plain config entries, so the whole sim path is reused.
+  // nuke = screen-clearing bazooka; barrel = grenade that rolls downhill on a long fuse.
+  nuke: {
+    label: 'Nuke', damage: 60, radius: 28, windAffected: true,
+    restitution: 0, fuseSteps: null, carves: true,
+    maxSpeed: BA_MAX_LAUNCH_SPEED, explodeOnUnitContact: true, bonus: true,
+  },
+  barrel: {
+    label: 'Barrel', damage: 50, radius: 18, windAffected: false,
+    restitution: 0.75, fuseSteps: 240, carves: true,
+    maxSpeed: BA_MAX_LAUNCH_SPEED, explodeOnUnitContact: false, bonus: true,
+  },
 } as const satisfies Record<string, BlastWeaponConfig>;
 
 export type BlastWeaponId = keyof typeof BA_WEAPONS;
+
+// The seeded crate contents pool
+export const BA_BONUS_WEAPONS: BlastWeaponId[] = ['nuke', 'barrel'];
 
 // aimError perturbs the AI's chosen launch velocity (px/step); knockback scale is shared.
 // Knockback is a launch velocity (px/step), not a displacement — gravity compounds it,

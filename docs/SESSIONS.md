@@ -4,6 +4,34 @@ Chronological log of dev sessions. Latest on top.
 
 ---
 
+## Session 15 — 2026-07-12
+**Goal:** Blast Arena crate drops + post-fire movement (brief: `.claude/sessions/session-15-blast-arena-crate-drops-and-post-fire-move.md`), plus synthesized BGM/SFX with toggles
+
+### Work done
+- `src/config/constants.ts`: `BA_POST_FIRE_MOVE_MS` (5s) / `BA_POST_FIRE_MIN_MS`, crate constants (`BA_CRATE_INTERVAL_ROUNDS` 2, `BA_CRATE_MAX_ACTIVE` 2, pickup radius, fall animation ms); `nuke` (radius 28 / dmg 60, wind-affected) and `barrel` (radius 18 / dmg 50, restitution 0.75, 240-step fuse) as plain `BA_WEAPONS` entries with `bonus: true`; `BA_BONUS_WEAPONS` pool
+- `src/lib/blastCrates.ts`: seeded crate schedule/placement — `crateDueRound` + `pickCrateSpawn(seed, round, terrain, hazardY)`; terrain-only column validity (dirt surface above hazard) so placement is a pure function of state every client shares at a round boundary
+- `src/lib/blastSim.ts`: `CrateState`; `TurnResolution` gains `crates` + per-unit `bonus` so missed pickups self-heal at turn boundaries
+- `src/hooks/useBlastEngine.ts`: `reposition` phase — after the local shooter's playback, walking/jumping stay live (same stamina) while aiming is locked; window = `min(5s, remaining turn)`, ends early on stamina-out, Done, or death; crate spawn at round starts, walk-overlap pickup, explosion-carve destruction, one bonus slot consumed at fire; host holds `turn_resolved` for `move_done` (or window + skip-grace timeout), non-hosts hold for the host with a deadlock-proof fallback; crate + parachute rendering with glint
+- `src/types/multiplayer.ts` + `src/hooks/useMultiplayerBlast.ts`: `move_done { turn_index, x, y, hp }` and `crate_picked { crate_id, turn_index, by_id }` events wired
+- `src/lib/blastAudio.ts`: Web Audio chiptune — all SFX (fire/throw/boot, explosion sizes, thud/splash/ko, pickup, crate drop/pop, turn/move/tick, win/lose) and a 4-bar A-minor battle loop synthesized in code, zero assets; independent BGM/SFX toggles persisted to localStorage
+- `BlastHud`: 4th weapon pill (`--ba-crate` accent, hotkey `4`) when holding a bonus, Done button during reposition, music + SFX toggle buttons; walk/jump buttons stay enabled while repositioning
+- Sprites: 8×8 crate + parachute char maps in `blastSprites.ts`; `--ba-crate` token + `baCrate` Tailwind color
+
+### Key decisions / deviations from the brief
+- `move_done` carries `hp` (brief: only x/y) — reposition falls/hazard are local-only, so the host must be told; hp is clamped downward-only
+- `crate_picked` staleness uses crate existence (idempotent removal) instead of turn-index rejection — a late claim for a still-live crate is correct to apply, and the resolution reconciles the rest
+- Crate skipped for a due round (max-active) is skipped permanently, not queued
+
+### Verified
+- `tsc`, lint (all touched files clean), `npm run build` pass
+- In-browser (solo, dev server): full turn loop `aiming → projectile → move! countdown → next turn`; Done button ends the window early; AI never repositions; crates spawn exactly at rounds 2 and 4 with max-active respected (state-level probe); nuke/barrel fire through the untouched sim (contact explosion / 240-step rolling fuse, correct carve radii); audio toggles flip + persist
+- Canvas pixels couldn't be visually confirmed in this session's harness (hidden-tab rAF suspension) — crate/parachute draw code follows the tombstone sprite pattern
+
+### Follow-ups
+- Manual QA: crate visuals + pickup-to-pill flow on-screen, audible BGM/SFX pass, 2-tab MP (crate sync, first-claim wins, `move_done` reconciliation, host-drop mid-window), breakpoints 375–1440px (4-pill HUD row on mobile)
+
+---
+
 ## Session 12 — 2026-07-10
 **Goal:** Raise Blast Arena's player cap from 4 to 8 (brief: `.claude/sessions/session-12-blast-arena-8-players.md`)
 

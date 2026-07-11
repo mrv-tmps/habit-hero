@@ -145,6 +145,33 @@ const BOOT_MAP = [
 export const BOOT_W = 6;
 export const BOOT_H = 5;
 
+// Supply crate: C planks (crate accent tint) · S diagonal straps
+const CRATE_MAP = [
+  'OOOOOOOO',
+  'OSCCCCSO',
+  'OCSCCSCO',
+  'OCCSSCCO',
+  'OCCSSCCO',
+  'OCSCCSCO',
+  'OSCCCCSO',
+  'OOOOOOOO',
+];
+export const CRATE_W = 8;
+export const CRATE_H = 8;
+
+// Parachute canopy + strings, drawn above a falling crate. P canopy
+const PARACHUTE_MAP = [
+  '..OOOOOO..',
+  '.OPPPPPPO.',
+  'OPPPPPPPPO',
+  'OOOOOOOOOO',
+  '.O......O.',
+  '..O....O..',
+  '...O..O...',
+];
+export const PARACHUTE_W = 10;
+export const PARACHUTE_H = 7;
+
 // G stone · D inset cross
 const TOMBSTONE_MAP = [
   '..OOOO..',
@@ -168,6 +195,8 @@ export interface SpriteColors {
   grenadeShell: string;
   bootLeather: string;
   stone: string;
+  crate: string;
+  chute: string;
 }
 
 function rasterize(map: string[], w: number, h: number, colorFor: (ch: string) => string | null): HTMLCanvasElement {
@@ -226,6 +255,8 @@ export interface ProjectileSprites {
   grenade: HTMLCanvasElement;
   boot: HTMLCanvasElement;
   tombstone: HTMLCanvasElement;
+  crate: HTMLCanvasElement;
+  parachute: HTMLCanvasElement;
 }
 
 export function buildProjectileSprites(colors: SpriteColors): ProjectileSprites {
@@ -241,6 +272,12 @@ export function buildProjectileSprites(colors: SpriteColors): ProjectileSprites 
     ),
     tombstone: rasterize(TOMBSTONE_MAP, TOMBSTONE_W, TOMBSTONE_H, ch =>
       ch === 'G' ? colors.stone : ch === 'O' || ch === 'D' ? colors.outline : null,
+    ),
+    crate: rasterize(CRATE_MAP, CRATE_W, CRATE_H, ch =>
+      ch === 'C' ? colors.crate : ch === 'S' || ch === 'O' ? colors.outline : null,
+    ),
+    parachute: rasterize(PARACHUTE_MAP, PARACHUTE_W, PARACHUTE_H, ch =>
+      ch === 'P' ? colors.chute : ch === 'O' ? colors.outline : null,
     ),
   };
 }
