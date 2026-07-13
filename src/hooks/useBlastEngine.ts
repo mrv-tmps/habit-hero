@@ -216,7 +216,7 @@ export function useBlastEngine({
   const pendingResolutionRef = useRef<TurnResolution | null>(null);
   const forceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastCarvedTurnRef = useRef(-1);
-  const explosionRef = useRef<{ x: number; y: number; r: number; endsAt: number } | null>(null);
+  const explosionRef = useRef<{ x: number; y: number; r: number; endsAt: number; durationMs: number } | null>(null);
   const previewRef = useRef<SimFrame[] | null>(null);
   const walkHeldRef = useRef<-1 | 0 | 1>(0);
   const staminaRef = useRef(BA_WALK_STAMINA_PX);
@@ -669,11 +669,14 @@ export function useBlastEngine({
 
     if (result.explosionAt) {
       const weaponRadius = result.carves[0]?.r ?? 10;
+      // Bonus-weapon blasts hold the core fireball on screen twice as long
+      const flashMs = weaponRadius >= 24 ? EXPLOSION_FLASH_MS * 2 : EXPLOSION_FLASH_MS;
       explosionRef.current = {
         x: result.explosionAt.x,
         y: result.explosionAt.y,
         r: weaponRadius,
-        endsAt: Date.now() + EXPLOSION_FLASH_MS,
+        endsAt: Date.now() + flashMs,
+        durationMs: flashMs,
       };
       const fx = fxRef.current;
       if (fx) {
@@ -1571,7 +1574,7 @@ export function useBlastEngine({
         if (left <= 0) {
           explosionRef.current = null;
         } else {
-          const progress = 1 - left / EXPLOSION_FLASH_MS;
+          const progress = 1 - left / explosion.durationMs;
           ctx.globalAlpha = 1 - progress;
           ctx.fillStyle = pal.explosion;
           ctx.beginPath();

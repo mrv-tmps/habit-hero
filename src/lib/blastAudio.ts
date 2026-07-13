@@ -145,9 +145,12 @@ const SFX: Record<SfxName, (c: AudioContext) => void> = {
     tone(c, { type: 'sine', freq: 120, freqTo: 35, dur: 0.45, vol: 0.7 });
   },
   bigExplosion: c => {
-    noise(c, { dur: 0.9, vol: 0.75, filterFrom: 4000, filterTo: 60 });
-    tone(c, { type: 'sine', freq: 100, freqTo: 25, dur: 0.9, vol: 0.85 });
-    tone(c, { type: 'square', freq: 55, freqTo: 30, dur: 0.6, vol: 0.25, at: 0.05 });
+    noise(c, { dur: 1.4, vol: 0.85, filterFrom: 5000, filterTo: 40 });
+    tone(c, { type: 'sine', freq: 90, freqTo: 20, dur: 1.5, vol: 1.0 });
+    tone(c, { type: 'square', freq: 55, freqTo: 25, dur: 1.0, vol: 0.3, at: 0.05 });
+    // Aftershock rumble
+    noise(c, { dur: 0.6, vol: 0.35, filterFrom: 500, filterTo: 50, at: 0.5 });
+    tone(c, { type: 'sine', freq: 60, freqTo: 22, dur: 0.7, vol: 0.5, at: 0.45 });
   },
   thud: c => {
     tone(c, { type: 'sine', freq: 160, freqTo: 50, dur: 0.15, vol: 0.5 });

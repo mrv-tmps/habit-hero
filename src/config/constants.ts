@@ -115,14 +115,16 @@ export const BA_WEAPONS = {
     maxSpeed: 1.6, explodeOnUnitContact: true,
   },
   // Crate-only bonus weapons: plain config entries, so the whole sim path is reused.
-  // nuke = screen-clearing bazooka; barrel = grenade that rolls downhill on a long fuse.
+  // Deliberately OP — oppressive damage and craters are the incentive to chase crates.
+  // nuke = screen-clearing bazooka (direct hit near-KOs, crater ~1/4 of the map);
+  // barrel = rolling grenade on a long fuse with a grenade-dwarfing blast.
   nuke: {
-    label: 'Nuke', damage: 60, radius: 28, windAffected: true,
+    label: 'Nuke', damage: 90, radius: 42, windAffected: true,
     restitution: 0, fuseSteps: null, carves: true,
     maxSpeed: BA_MAX_LAUNCH_SPEED, explodeOnUnitContact: true, bonus: true,
   },
   barrel: {
-    label: 'Barrel', damage: 50, radius: 18, windAffected: false,
+    label: 'Barrel', damage: 75, radius: 30, windAffected: false,
     restitution: 0.75, fuseSteps: 240, carves: true,
     maxSpeed: BA_MAX_LAUNCH_SPEED, explodeOnUnitContact: false, bonus: true,
   },

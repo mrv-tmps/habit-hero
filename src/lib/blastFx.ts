@@ -74,7 +74,12 @@ export interface BlastFxState {
   streaks: FxStreak[];
   shakeAmp: number;
   shakeUntil: number;
+  // Mega blasts (bonus weapons) shake longer and flash brighter, so duration and
+  // strength live on the state instead of being fixed constants
+  shakeMs: number;
   flashUntil: number;
+  flashMs: number;
+  flashStrength: number;
   lastFrameAt: number;
 }
 
@@ -99,7 +104,10 @@ export function createFxState(reducedMotion: boolean): BlastFxState {
     })),
     shakeAmp: 0,
     shakeUntil: 0,
+    shakeMs: SHAKE_MS,
     flashUntil: 0,
+    flashMs: FLASH_MS,
+    flashStrength: 0.18,
     lastFrameAt: 0,
   };
 }
@@ -137,17 +145,26 @@ export function spawnExplosionFx(
   r: number,
   now: number,
 ): void {
-  fx.shakeAmp = Math.min(4, 1 + r * 0.18);
-  fx.shakeUntil = now + SHAKE_MS;
-  fx.flashUntil = now + FLASH_MS;
+  // Bonus-weapon blasts (r >= 24) get the oppressive treatment: harder, longer
+  // shake, a brighter and longer screen flash, double shockwave, more debris,
+  // and a rising mushroom column
+  const mega = r >= 24;
+  fx.shakeAmp = mega ? Math.min(8, 3 + r * 0.12) : Math.min(4, 1 + r * 0.18);
+  fx.shakeMs = mega ? 450 : SHAKE_MS;
+  fx.shakeUntil = now + fx.shakeMs;
+  fx.flashMs = mega ? 320 : FLASH_MS;
+  fx.flashStrength = mega ? 0.5 : 0.18;
+  fx.flashUntil = now + fx.flashMs;
   if (fx.reducedMotion) return;
 
   fx.rings.push({ x, y, maxR: r * 1.6, bornAt: now });
+  if (mega) fx.rings.push({ x, y, maxR: r * 2.4, bornAt: now });
 
   const rng = mulberry32((Math.round(x) * 73856093) ^ (Math.round(y) * 19349663));
-  const debrisCount = 8 + Math.floor(rng() * 9);
+  const debrisCount = (8 + Math.floor(rng() * 9)) * (mega ? 3 : 1);
+  const speedScale = mega ? 1.8 : 1;
   for (let i = 0; i < debrisCount; i++) {
-    const speed = 0.4 + rng() * 1.4;
+    const speed = (0.4 + rng() * 1.4) * speedScale;
     const dirX = rng() * 2 - 1;
     const dirY = -(0.3 + rng() * 0.9);
     // Terrain fragments (bigger, terrain-colored) mixed with hot debris
@@ -156,13 +173,13 @@ export function spawnExplosionFx(
       x, y,
       vx: dirX * speed,
       vy: dirY * speed * 1.4,
-      lifeMs: 500 + rng() * 400,
+      lifeMs: (500 + rng() * 400) * (mega ? 1.5 : 1),
       size: isFragment ? 2 : 1,
       color: isFragment ? (rng() < 0.5 ? pal.terrain : pal.dirt) : pal.explosion,
       gravity: 0.05,
     }, now);
   }
-  const smokeCount = 4 + Math.floor(rng() * 3);
+  const smokeCount = (4 + Math.floor(rng() * 3)) * (mega ? 2 : 1);
   for (let i = 0; i < smokeCount; i++) {
     spawnParticle(fx, {
       x: x + (rng() * 2 - 1) * r * 0.4,
@@ -174,6 +191,21 @@ export function spawnExplosionFx(
       color: pal.smoke,
       gravity: -0.002,
     }, now);
+  }
+  if (mega) {
+    // Mushroom column: slow, long-lived smoke rising from the crater core
+    for (let i = 0; i < 14; i++) {
+      spawnParticle(fx, {
+        x: x + (rng() * 2 - 1) * r * 0.15,
+        y: y - rng() * 4,
+        vx: (rng() * 2 - 1) * 0.06,
+        vy: -(0.3 + rng() * 0.35),
+        lifeMs: 1100 + rng() * 900,
+        size: rng() < 0.6 ? 3 : 2,
+        color: rng() < 0.35 ? pal.explosion : pal.smoke,
+        gravity: -0.004,
+      }, now);
+    }
   }
 }
 
@@ -314,7 +346,7 @@ export function spawnDamageNumber(fx: BlastFxState, x: number, y: number, amount
 
 export function fxShakeOffset(fx: BlastFxState, now: number): { x: number; y: number } {
   if (fx.reducedMotion || now >= fx.shakeUntil) return { x: 0, y: 0 };
-  const decay = (fx.shakeUntil - now) / SHAKE_MS;
+  const decay = (fx.shakeUntil - now) / fx.shakeMs;
   const amp = fx.shakeAmp * decay;
   return {
     x: (Math.random() * 2 - 1) * amp,
@@ -411,7 +443,7 @@ export function drawFxAmbient(
 // Full-canvas explosion flash — draw last, outside the shake transform
 export function drawFxScreenFlash(ctx: CanvasRenderingContext2D, fx: BlastFxState, color: string, now: number): void {
   if (fx.reducedMotion || now >= fx.flashUntil) return;
-  ctx.globalAlpha = ((fx.flashUntil - now) / FLASH_MS) * 0.18;
+  ctx.globalAlpha = ((fx.flashUntil - now) / fx.flashMs) * fx.flashStrength;
   ctx.fillStyle = color;
   ctx.fillRect(0, 0, BA_CANVAS_W, BA_CANVAS_H);
   ctx.globalAlpha = 1;
